@@ -1,7 +1,6 @@
 using LTC
 using GalacticOptim
 using Plots
-using Functors
 
 function generate_data()
     in_features = 2
@@ -49,9 +48,7 @@ display(Plots.heatmap(wiring.syn_pol))
 ltc = NCP(wiring)
 θ = Flux.params(ltc)
 @time ltc.([rand(Float32,2,1) for i in 1:50])
-
 Flux.reset!(ltc)
-@time loss_galactic(ltcp,[],data_x,data_y,ltcre)
 
 lower, upper = get_bounds(ltc)
 
@@ -119,11 +116,19 @@ function my_custom_train!(m, loss, ps, data, opt; data_range=nothing, lower=noth
   end
 end
 
+@time gs = Zygote.gradient(Flux.params(ltc)) do
+  Flux.reset!(ltc)
+  lossf(data_x,data_y)[1]
+end
+
+# for g in gs
+#   @show g
+# end
 
 #ltc = Flux.Chain(Dense(2,5),Flux.LSTM(5,5),Flux.Dense(5,1))
 
 Flux.reset!(ltc)
-opt = GalacticOptim.Flux.Optimiser(ClipValue(0.01), ADAM(0.001))
+opt = GalacticOptim.Flux.Optimiser(ClipValue(0.001), ADAM(0.001))
 
 my_custom_train!(ltc, (x,y) -> lossf(x,y)[1], Flux.params(ltc), data(3), opt; cb=()->cbf(data_x,data_y,ltc),lower,upper)
 my_custom_train!(ltc, (x,y) -> lossf(x,y)[1], Flux.params(ltc), data(1000), opt; cb=()->cbf(data_x,data_y,ltc),lower,upper)
