@@ -112,11 +112,10 @@ NCP(args...) = Flux.Recur(LTCCell(args...))
 Flux.Recur(m::LTCCell) = Flux.Recur(m, m.state0)
 
 
-(m::LTCCell)(h::AbstractVector, x) = m(repeat(h,1,size(x,2)), x)
-
 #function (m::LTCCell{W,SENS,SYN,SENSP,SENSRE,SYNP,SYNRE,MI,MO,V,<:AbstractArray{T}})(h::AbstractVecOrMat{T}, x::AbstractVecOrMat{T}) where {W,SENS,SYN,SENSP,SENSRE,SYNP,SYNRE,MI,MO,V,T}
 function (m::LTCCell)(h, x)
   x = m.mapin(x)
+  #m.mapin(x,x)
 
   # TODO: sens_f() here?
 
@@ -145,7 +144,9 @@ function (m::LTCCell)(h, x)
 
   h = sol[:,:,end]
   out = sol[end-m.wiring.n_motor+1:end, : ,end]
+
   out = m.mapout(out)
+  #m.mapout(out,out)
   # out = h
   # out = m.mapout(out)
 
@@ -177,19 +178,21 @@ function dltcdt!(dx,x,p,t, m)
   sens_f = m.sens_re(sens_p)
   syn_f  = m.syn_re(syn_p)
 
-  # curr_buf = Flux.Zygote.Buffer(x, (size(x,1), size(x,2)))
-  # for i in eachindex(curr_buf)
-  #   curr_buf[i] = 0
-  # end
+  curr_buf = Flux.Zygote.Buffer(x, (size(x,1), size(x,2)))
+  for i in eachindex(curr_buf)
+    curr_buf[i] = 0
+  end
+  sens_f(x, I, m.wiring.sens_mask, m.wiring.sens_pol, curr_buf)
+  syn_f(x, x, m.wiring.syn_mask, m.wiring.syn_pol, curr_buf)
+  I_syn = copy(curr_buf)
 
-  I_sens = sens_f(x, I, m.wiring.sens_mask, m.wiring.sens_pol)
-  I_syn = syn_f(x, x, m.wiring.syn_mask, m.wiring.syn_pol)
-  #I_syn = copy(curr_buf)
+  # I_sens = sens_f(x, I, m.wiring.sens_mask, m.wiring.sens_pol)
+  # I_syn = syn_f(x, x, m.wiring.syn_mask, m.wiring.syn_pol)
 
   #dx = Flux.Zygote.Buffer(x, (size(x,1), size(x,2)))
   @inbounds for b in 1:size(I,2)
     for n in 1:size(x,1)
-      dx[n,b] = (cm[n]) * (-(Gleak[n] * (Eleak[n] - x[n,b])) + I_syn[n,b] + I_sens[n,b])
+      dx[n,b] = (cm[n]) * (-(Gleak[n] * (Eleak[n] - x[n,b])) + I_syn[n,b])
     end
   end
   #return copy(dx)
@@ -244,6 +247,23 @@ function (m::gNN)(h, x, bitmask, polmask)
     end
   end
   return copy(curr_buf)
+  #nothing
+end
+
+
+
+function (m::gNN)(h, x, bitmask, polmask, curr_buf)
+  G, μ, σ, E = m.G, m.μ, m.σ, m.E
+
+  for b in 1:size(h,2)
+    for s in 1:size(x,1)
+      for n in 1:size(h,1)
+        tmp = bitmask[n,s] * G[n,s] * Flux.sigmoid((x[s,b] - μ[n,s]) * σ[n,s])
+        curr_buf[n,b] += tmp * (polmask[n,s] * E[n,s] - h[n,b])
+        #curr_buf[n,b] += mask[n,s] * G[n,s] * Flux.sigmoid((x[s,b] - μ[n,s]) * σ[n,s]) * (E[n,s] - h[n,b])
+      end
+    end
+  end
   #nothing
 end
 
