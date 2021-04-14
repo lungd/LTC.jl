@@ -45,7 +45,7 @@ display(Plots.heatmap(wiring.syn_mask))
 display(Plots.heatmap(wiring.syn_pol))
 
 
-ltc = NCP(2,1,wiring)
+ltc = NCP(wiring)
 lower, upper = get_bounds(ltc)
 
 #ltcp, ltcre = Functors.functor(ltc)

@@ -11,7 +11,7 @@ function loss_model(x,y)
 
   ŷ = model.(x)
 
-  sum(sum([(ŷ[i][end-1:end,:] .- y[i][end-1:end,:]) .^ 2 for i in 1:length(y)]))/length(y)
+  sum(sum([(ŷ[i] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y)
 end
 
 
@@ -65,7 +65,7 @@ end
 train_dl, test_dl, valid_dl = get_dl(batchsize=32, seq_len=32)
 
 
-model = NCP(Wiring(17,6; n_sensory=4, n_inter=2, n_command=0, n_motor=6))
+model = NCP(Wiring(17,17; n_sensory=4, n_inter=2, n_command=0, n_motor=17))
 y = model(rand(Float32,17,32))
 @time y = model(rand(Float32,17,32))
 
