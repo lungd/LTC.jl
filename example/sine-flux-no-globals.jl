@@ -36,5 +36,8 @@ function test()
   @time gs = Zygote.gradient(θ) do
     lossf(data_x,data_y)#[1]
   end
+  @time gs = Zygote.gradient(θ) do
+    lossf(data_x,data_y)#[1]
+  end
 end
 @time test()

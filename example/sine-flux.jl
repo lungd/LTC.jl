@@ -47,8 +47,8 @@ rdata = [rand(Float32,2,1) for i in 1:50]
 ltc = NCP(Wiring(2,1))
 θ = Flux.params(ltc)
 #ltc(rand(Float32,2,1))
-#@time ltc.(rdata)
-#Flux.reset!(ltc)
+@time ltc.(rdata)
+Flux.reset!(ltc)
 
 lower, upper = get_bounds(ltc)
 
