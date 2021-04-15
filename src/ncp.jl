@@ -37,10 +37,10 @@ function Wiring(in::Int, out::Int;
   motor_s   = n_sensory + n_inter + n_command + 1
   n_total   = n_sensory + n_inter + n_command + n_motor
 
-  sens_mask = ones(Int8, n_total, in)
+  sens_mask = ones(Int8, in, n_total)
   syn_mask  = ones(Int8, n_total, n_total)
 
-  sens_pol = zeros(Float32, n_total, in)
+  sens_pol = zeros(Float32, in, n_total)
   syn_pol  = zeros(Float32, n_total, n_total)
   for i in eachindex(sens_pol)
     sens_pol[i] = [-1,1,1][rand(1:3)]
@@ -89,9 +89,9 @@ function LTCCell(wiring)
   n_in = wiring.n_in
   out = wiring.n_motor
   n_total = wiring.n_total
-  cm    = rand_uniform(3,   5, n_total)
-  Gleak = rand_uniform(0.001, 1,   n_total)
-  Eleak = rand_uniform(-0.2,  0.2, n_total)
+  cm    = rand_uniform(3, 5, n_total)
+  Gleak = rand_uniform(1, 10, n_total)
+  Eleak = rand_uniform(0, 0.3, n_total)
   state0 = zeros(eltype(cm), n_total, 1)
 
   sens_f = gNN(n_in, n_total)
@@ -122,6 +122,8 @@ function (m::LTCCell)(h, x)
   u0 = repeat(h, 1, size(x,2)-size(h,2)+1)
 
   sensealg = InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true))
+  #sensealg = InterpolatingAdjoint(autojacvec=ZygoteVJP())
+  #sensealg = ForwardDiffSensitivity()
   #sensealg = InterpolatingAdjoint()
   #sensealg = BacksolveAdjoint()
   #sensealg = TrackerAdjoint()
@@ -132,7 +134,8 @@ function (m::LTCCell)(h, x)
   tspan = (0f0, 1f0)
 
 
-  p = [m.cm[:]; m.Gleak[:]; m.Eleak[:]; m.sens_p[:]; m.syn_p[:]; x[:]]
+  p = [m.cm[:]; m.Gleak[:]; m.Eleak[:]; m.sens_p[;]; m.syn_p[:]; x[:]]
+  #p = [m.cm, m.Gleak, m.Eleak, m.sens_p, m.syn_p, x[:]]
 
   #p = ComponentArray(cm=m.cm, Gleak=m.Gleak, Eleak=m.Eleak, sens_p=m.sens_p, syn_p=m.syn_p, I=x)
   f = ODEFunction{true}((dx,x,p,t)->dltcdt!(dx,x,p,t, m))
@@ -143,12 +146,10 @@ function (m::LTCCell)(h, x)
   #@show size(sol)
 
   h = sol[:,:,end]
-  out = sol[end-m.wiring.n_motor+1:end, : ,end]
+  #out = sol[end-m.wiring.n_motor+1:end, : ,end]
+  @views out = sol[:,:,end]
 
   out = m.mapout(out)
-  #m.mapout(out,out)
-  # out = h
-  # out = m.mapout(out)
 
   return h, out
 end
@@ -170,32 +171,19 @@ function dltcdt!(dx,x,p,t, m)
   @views sens_p = p[cm_pl + Gleak_pl + Eleak_pl + 1 : cm_pl + Gleak_pl + Eleak_pl + sens_pl]
   @views syn_p = p[cm_pl + Gleak_pl + Eleak_pl + sens_pl + 1 : cm_pl + Gleak_pl + Eleak_pl + sens_pl + syn_pl]
 
-  @views I = p[cm_pl + Gleak_pl + Eleak_pl + sens_pl + syn_pl + 1 : end]
+  I = p[cm_pl + Gleak_pl + Eleak_pl + sens_pl + syn_pl + 1 : end]
   I = reshape(I, m.wiring.n_in, :)
 
   #@unpack cm, Gleak, Eleak, sens_p, syn_p, I = p
 
+
   sens_f = m.sens_re(sens_p)
   syn_f  = m.syn_re(syn_p)
 
-  curr_buf = Flux.Zygote.Buffer(x, (size(x,1), size(x,2)))
-  for i in eachindex(curr_buf)
-    curr_buf[i] = 0
-  end
-  sens_f(x, I, m.wiring.sens_mask, m.wiring.sens_pol, curr_buf)
-  syn_f(x, x, m.wiring.syn_mask, m.wiring.syn_pol, curr_buf)
-  I_syn = copy(curr_buf)
+  I_sens = sens_f(x, I, m.wiring.sens_mask, m.wiring.sens_pol)
+  I_syn = syn_f(x, x, m.wiring.syn_mask, m.wiring.syn_pol)
 
-  # I_sens = sens_f(x, I, m.wiring.sens_mask, m.wiring.sens_pol)
-  # I_syn = syn_f(x, x, m.wiring.syn_mask, m.wiring.syn_pol)
-
-  #dx = Flux.Zygote.Buffer(x, (size(x,1), size(x,2)))
-  @inbounds for b in 1:size(I,2)
-    for n in 1:size(x,1)
-      dx[n,b] = (cm[n]) * (-(Gleak[n] * (Eleak[n] - x[n,b])) + I_syn[n,b])
-    end
-  end
-  #return copy(dx)
+  dx .= cm .* (-(Gleak .* (x .- Eleak)) .+ I_syn .+ I_sens)
   nothing
 end
 
@@ -222,10 +210,10 @@ struct gNN{A<:AbstractArray}
   gNN(G::A, μ::A, σ::A, E::A) where {A<:AbstractArray} = new{A}(G, μ, σ, E)
 end
 function gNN(in::Integer, out::Integer)
-  G = rand_uniform(0.001, 1, out,in)
-  μ = rand_uniform(0.3, 0.8, out,in)
-  σ = rand_uniform(3, 8, out,in)
-  E = rand_uniform(0.001, 0.3, out,in)
+  G = rand_uniform(0.001, 1, in, out)
+  μ = rand_uniform(0.3, 0.8, in, out)
+  σ = rand_uniform(3, 8, in, out)
+  E = rand_uniform(0.001, 0.3, in, out)
   gNN(G,μ,σ,E)
 end
 
@@ -238,40 +226,17 @@ function (m::gNN)(h, x, bitmask, polmask)
   end
 
   for b in 1:size(h,2)
-    for s in 1:size(x,1)
-      for n in 1:size(h,1)
-        tmp = bitmask[n,s] * G[n,s] * Flux.sigmoid((x[s,b] - μ[n,s]) * σ[n,s])
-        curr_buf[n,b] += tmp * (polmask[n,s] * E[n,s] - h[n,b])
-        #curr_buf[n,b] += mask[n,s] * G[n,s] * Flux.sigmoid((x[s,b] - μ[n,s]) * σ[n,s]) * (E[n,s] - h[n,b])
-      end
+    tmp = reshape(sum(bitmask .* G .* Flux.sigmoid.(((x[:,b]) .- μ) .* σ) .* (polmask .* E .- reshape((h[:,b]),1,:)),dims=1), :)
+    for n in eachindex(tmp)
+      curr_buf[n,b] = tmp[n]
     end
   end
   return copy(curr_buf)
-  #nothing
-end
 
-
-
-function (m::gNN)(h, x, bitmask, polmask, curr_buf)
-  G, μ, σ, E = m.G, m.μ, m.σ, m.E
-
-  for b in 1:size(h,2)
-    for s in 1:size(x,1)
-      for n in 1:size(h,1)
-        tmp = bitmask[n,s] * G[n,s] * Flux.sigmoid((x[s,b] - μ[n,s]) * σ[n,s])
-        curr_buf[n,b] += tmp * (polmask[n,s] * E[n,s] - h[n,b])
-        #curr_buf[n,b] += mask[n,s] * G[n,s] * Flux.sigmoid((x[s,b] - μ[n,s]) * σ[n,s]) * (E[n,s] - h[n,b])
-      end
-    end
-  end
-  #nothing
+  #Flux.stack([reshape(sum(bitmask .* G .* Flux.sigmoid.(((@view x[:,b]) .- μ) .* σ) .* (polmask .* E .- reshape((@view h[:,b]),1,:)),dims=1), :) for b in 1:size(h,2)], 2)
 end
 
 Flux.@functor gNN
-
-
-
-
 
 
 function get_bounds(m::Mapper)
@@ -304,7 +269,7 @@ function get_bounds(m::LTCCell)
       get_bounds(m.sens_f)[1]...,
       get_bounds(m.syn_f)[1]...,
       [1 for _ in m.cm]...,
-      [0 for _ in m.Gleak]...,
+      [1 for _ in m.Gleak]...,
       [-0.3 for _ in m.Eleak]...,
       [0 for _ in m.state0]...,
   ] |> f32
@@ -314,7 +279,7 @@ function get_bounds(m::LTCCell)
     get_bounds(m.sens_f)[2]...,
     get_bounds(m.syn_f)[2]...,
     [10 for _ in m.cm]...,
-    [2.0 for _ in m.Gleak]...,
+    [10.0 for _ in m.Gleak]...,
     [0.3 for _ in m.Eleak]...,
     [0.001 for _ in m.state0]...,
   ] |> f32
