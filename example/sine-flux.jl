@@ -1,6 +1,7 @@
 using LTC
 using GalacticOptim
 using Plots
+using BenchmarkTools
 
 function generate_data()
     in_features = 2
@@ -37,24 +38,23 @@ end
 
 data_x,data_y = generate_data()
 
+# display(Plots.heatmap(wiring.sens_mask))
+# display(Plots.heatmap(wiring.sens_pol))
+# display(Plots.heatmap(wiring.syn_mask))
+# display(Plots.heatmap(wiring.syn_pol))
 
-wiring = Wiring(2,1)
-
-display(Plots.heatmap(wiring.sens_mask))
-display(Plots.heatmap(wiring.sens_pol))
-display(Plots.heatmap(wiring.syn_mask))
-display(Plots.heatmap(wiring.syn_pol))
-
-ltc = NCP(wiring)
+rdata = [rand(Float32,2,1) for i in 1:50]
+ltc = NCP(Wiring(2,1))
 θ = Flux.params(ltc)
-@time ltc.([rand(Float32,2,1) for i in 1:50])
-Flux.reset!(ltc)
+#ltc(rand(Float32,2,1))
+#@time ltc.(rdata)
+#Flux.reset!(ltc)
 
 lower, upper = get_bounds(ltc)
 
 function lossf(x,y)
   ŷ = ltc.(x)
-  sum(sum([(ŷ[i] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y), ŷ
+  sum(sum([(ŷ[i][end,:] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y), ŷ
 end
 
 function cbf(x,y,c)
@@ -116,7 +116,7 @@ function my_custom_train!(m, loss, ps, data, opt; data_range=nothing, lower=noth
   end
 end
 
-@time gs = Zygote.gradient(Flux.params(ltc)) do
+@btime gs = Zygote.gradient(Flux.params(ltc)) do
   Flux.reset!(ltc)
   lossf(data_x,data_y)[1]
 end
