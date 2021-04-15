@@ -123,6 +123,7 @@ function (m::LTCCell)(h, x)
 
   sensealg = InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true))
   #sensealg = InterpolatingAdjoint(autojacvec=ZygoteVJP())
+  #sensealg = QuadratureAdjoint(autojacvec = ZygoteVJP())
   #sensealg = ForwardDiffSensitivity()
   #sensealg = InterpolatingAdjoint()
   #sensealg = BacksolveAdjoint()
@@ -134,16 +135,19 @@ function (m::LTCCell)(h, x)
   tspan = (0f0, 1f0)
 
 
-  p = [m.cm[:]; m.Gleak[:]; m.Eleak[:]; m.sens_p[;]; m.syn_p[:]; x[:]]
-  #p = [m.cm, m.Gleak, m.Eleak, m.sens_p, m.syn_p, x[:]]
+  #@views p = [m.cm[:], m.Gleak[:], m.Eleak[:], m.sens_p[:], m.syn_p[:], x[:]]
+  p = [m.cm; m.Gleak; m.Eleak; m.sens_p; m.syn_p; x[:]]
 
   #p = ComponentArray(cm=m.cm, Gleak=m.Gleak, Eleak=m.Eleak, sens_p=m.sens_p, syn_p=m.syn_p, I=x)
   f = ODEFunction{true}((dx,x,p,t)->dltcdt!(dx,x,p,t, m))
-  #f = ODEFunction((x,p,t)->dltcdt(x,p,t, m))
+  #f = ODEFunction((x,p,t)->oop(x,p,t, m))
   prob = ODEProblem(f,u0,tspan,p)
 
-  sol = Array(solve(prob, solver; sensealg, save_everystep=false, save_start=false))
+  sol = solve(prob, solver; sensealg, save_everystep=false, save_start=false)
+  #sol = Array(solve(prob, solver; sensealg, save_everystep=false, save_start=false, reltol=1e-2, abstol=1e-2))
   #@show size(sol)
+
+  #@show size(sol,3)
 
   h = sol[:,:,end]
   #out = sol[end-m.wiring.n_motor+1:end, : ,end]
@@ -183,8 +187,39 @@ function dltcdt!(dx,x,p,t, m)
   I_sens = sens_f(x, I, m.wiring.sens_mask, m.wiring.sens_pol)
   I_syn = syn_f(x, x, m.wiring.syn_mask, m.wiring.syn_pol)
 
-  dx .= cm .* (-(Gleak .* (x .- Eleak)) .+ I_syn .+ I_sens)
+  @. dx = cm * (-(Gleak * (x - Eleak)) + I_syn + I_sens)
   nothing
+end
+
+
+function oop(x,p,t, m)
+
+  cm_pl = size(x,1)
+  Gleak_pl = size(x,1)
+  Eleak_pl = size(x,1)
+  sens_pl = m.sens_pl
+  syn_pl = m.syn_pl
+
+  # @views cm    = p[1 : cm_pl]
+  # @views Gleak = p[cm_pl + 1 : cm_pl + Gleak_pl]
+  # @views Eleak = p[cm_pl + Gleak_pl + 1 : cm_pl + Gleak_pl + Eleak_pl]
+  #
+  # @views sens_p = p[cm_pl + Gleak_pl + Eleak_pl + 1 : cm_pl + Gleak_pl + Eleak_pl + sens_pl]
+  # @views syn_p = p[cm_pl + Gleak_pl + Eleak_pl + sens_pl + 1 : cm_pl + Gleak_pl + Eleak_pl + sens_pl + syn_pl]
+  #
+  # I = p[cm_pl + Gleak_pl + Eleak_pl + sens_pl + syn_pl + 1 : end]
+  # I = reshape(I, m.wiring.n_in, :)
+
+  @unpack cm, Gleak, Eleak, sens_p, syn_p, I = p
+
+
+  sens_f = m.sens_re(sens_p)
+  syn_f  = m.syn_re(syn_p)
+
+  I_sens = sens_f(x, I, m.wiring.sens_mask, m.wiring.sens_pol)
+  I_syn = syn_f(x, x, m.wiring.syn_mask, m.wiring.syn_pol)
+
+  cm .* (-(Gleak .* (x .- Eleak)) .+ I_syn .+ I_sens)
 end
 
 
@@ -220,18 +255,24 @@ end
 function (m::gNN)(h, x, bitmask, polmask)
   G, μ, σ, E = m.G, m.μ, m.σ, m.E
 
-  curr_buf = Flux.Zygote.Buffer(h, size(h,1),size(h,2))
-  for i in eachindex(curr_buf)
-    curr_buf[i] = 0
-  end
+  # curr_buf = Flux.Zygote.Buffer(h, size(h,1),size(h,2))
+  # for i in eachindex(curr_buf)
+  #   curr_buf[i] = 0
+  # end
 
-  for b in 1:size(h,2)
-    tmp = reshape(sum(bitmask .* G .* Flux.sigmoid.(((x[:,b]) .- μ) .* σ) .* (polmask .* E .- reshape((h[:,b]),1,:)),dims=1), :)
-    for n in eachindex(tmp)
-      curr_buf[n,b] = tmp[n]
-    end
-  end
-  return copy(curr_buf)
+  # for b in 1:size(h,2)
+  #   tmp = reshape(sum(bitmask .* G .* Flux.sigmoid.(((x[:,b]) .- μ) .* σ) .* (polmask .* E .- reshape((h[:,b]),1,:)),dims=1), :)
+  #   for n in eachindex(tmp)
+  #     curr_buf[n,b] = tmp[n]
+  #   end
+  # end
+  # return copy(curr_buf)
+
+
+
+  reshape(reduce(vcat, [reshape(sum(bitmask .* G .* (1 ./ (1 .+ exp.(((@view x[:,b]) .- μ) .* σ))) .* (polmask .* E .- reshape((@view h[:,b]),1,:)),dims=1), :) for b in 1:size(h,2)]), size(h,1),:)
+
+  #reshape(reduce(vcat, [reshape(sum(bitmask .* G .* Flux.sigmoid.(((@view x[:,b]) .- μ) .* σ) .* (polmask .* E .- reshape((@view h[:,b]),1,:)),dims=1), :) for b in 1:size(h,2)]), size(h,1),:)
 
   #Flux.stack([reshape(sum(bitmask .* G .* Flux.sigmoid.(((@view x[:,b]) .- μ) .* σ) .* (polmask .* E .- reshape((@view h[:,b]),1,:)),dims=1), :) for b in 1:size(h,2)], 2)
 end

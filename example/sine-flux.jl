@@ -61,7 +61,7 @@ function cbf(x,y,c)
     l,pred = lossf(x, y)
     println(l)
     isnan(l) && return false
-    fig = scatter([(isinf(ŷ[end,1]) || isnan(ŷ[end,1])) ? missing : ŷ[1,1] for ŷ in pred])
+    fig = scatter([ŷ[1,1] for ŷ in pred])
     scatter!(fig, [yi[1,1] for yi in y])
     display(fig)
     return false
