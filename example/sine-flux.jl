@@ -1,7 +1,10 @@
 using LTC
 using GalacticOptim
 using Plots
+gr()
 using BenchmarkTools
+using DiffEqSensitivity
+using OrdinaryDiffEq
 
 function generate_data()
     in_features = 2
@@ -36,38 +39,6 @@ function data(iter; data_x=nothing, data_y=nothing, short=false, noisy=false)
 end
 
 
-data_x,data_y = generate_data()
-
-# display(Plots.heatmap(wiring.sens_mask))
-# display(Plots.heatmap(wiring.sens_pol))
-# display(Plots.heatmap(wiring.syn_mask))
-# display(Plots.heatmap(wiring.syn_pol))
-
-rdata = [rand(Float32,2,1) for i in 1:50]
-ltc = NCP(Wiring(2,1))
-θ = Flux.params(ltc)
-#ltc(rand(Float32,2,1))
-@time ltc.(rdata)
-Flux.reset!(ltc)
-
-lower, upper = get_bounds(ltc)
-
-function lossf(x,y)
-  ŷ = ltc.(x)
-  sum(sum([(ŷ[i][end,:] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y), ŷ
-end
-
-function cbf(x,y,c)
-    l,pred = lossf(x, y)
-    println(l)
-    isnan(l) && return false
-    fig = scatter([ŷ[1,1] for ŷ in pred])
-    scatter!(fig, [yi[1,1] for yi in y])
-    display(fig)
-    return false
-end
-
-
 function my_custom_train!(m, loss, ps, data, opt; data_range=nothing, lower=nothing, upper=nothing, cb=()->nothing)
   ps = Params(ps)
   for d in data
@@ -93,7 +64,7 @@ function my_custom_train!(m, loss, ps, data, opt; data_range=nothing, lower=noth
 
     # back is a method that computes the product of the gradient so far with its argument.
     train_loss, back = Zygote.pullback(() -> loss(x,y), ps)
-    cb()
+    cb(x,y,train_loss,m)
     # Insert whatever code you want here that needs training_loss, e.g. logging.
     # logging_callback(training_loss)
     # Apply back() to the correct type of 1.0 to get the gradient of loss.
@@ -110,28 +81,54 @@ function my_custom_train!(m, loss, ps, data, opt; data_range=nothing, lower=noth
 
 
     for (i,p) in enumerate(ps[1])
-        ps[1][i] = max(lower[i],ps[1][i])
-        ps[1][i] = min(upper[i],ps[1][i])
+      ps[1][i] = max(lower[i],p)
+      ps[1][i] = min(upper[i],p)
     end
   end
 end
 
-@btime gs = Zygote.gradient(Flux.params(ltc)) do
-  Flux.reset!(ltc)
-  lossf(data_x,data_y)[1]
+
+
+function traintest(n, solver, sensealg)
+  function loss(x,y,m)
+    ŷ = m.(x)
+    sum(sum([(ŷ[i][end,:] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y)#, ŷ
+  end
+
+  function cb(x,y,l,m)
+    println(l)
+    pred = m.(x)
+    # isnan(l) && return false
+    fig = scatter([ŷ[end,1] for ŷ in pred])
+    scatter!(fig, [yi[end,1] for yi in y])
+    display(fig)
+    return false
+  end
+
+  x,y = generate_data()
+  model = NCP(Wiring(2,1), solver, sensealg)
+  θ = Flux.params(model)
+  lower,upper = get_bounds(model)
+
+  opt = GalacticOptim.Flux.Optimiser(ClipValue(1), ADAM(0.01f0))
+  my_custom_train!(model, (x,y) -> loss(x,y,model), θ, data(3), opt; cb, lower, upper)
+  my_custom_train!(model, (x,y) -> loss(x,y,model), θ, data(n), opt; cb, lower, upper)
 end
 
-# for g in gs
-#   @show g
-# end
+
+@time traintest(3, VCABM(), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
+@time traintest(300, VCABM(), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
+
+@time traintest(3, AutoTsit5(Rosenbrock23()), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
+@time traintest(300, AutoTsit5(Rosenbrock23()), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
 
 #ltc = Flux.Chain(Dense(2,5),Flux.LSTM(5,5),Flux.Dense(5,1))
 
-Flux.reset!(ltc)
-opt = GalacticOptim.Flux.Optimiser(ClipValue(0.001), ADAM(0.001))
-
-my_custom_train!(ltc, (x,y) -> lossf(x,y)[1], Flux.params(ltc), data(3), opt; cb=()->cbf(data_x,data_y,ltc),lower,upper)
-my_custom_train!(ltc, (x,y) -> lossf(x,y)[1], Flux.params(ltc), data(1000), opt; cb=()->cbf(data_x,data_y,ltc),lower,upper)
+# Flux.reset!(ltc)
+# opt = GalacticOptim.Flux.Optimiser(ClipValue(0.1), ADAM(0.001))
+#
+# my_custom_train!(ltc, (x,y) -> lossf(x,y)[1], Flux.params(ltc), data(3), opt; cb=()->cbf(data_x,data_y,ltc),lower,upper)
+# my_custom_train!(ltc, (x,y) -> lossf(x,y)[1], Flux.params(ltc), data(1000), opt; cb=()->cbf(data_x,data_y,ltc),lower,upper)
 
 # my_custom_train!(ltc, (x,y) -> lossf(x,y)[1], Flux.params(ltc), data(100), opt; data_range=[1,8], cb=()->cbf(data_x,data_y,ltc),lower,upper)
 # my_custom_train!(ltc, (x,y) -> lossf(x,y)[1], Flux.params(ltc), data(100), opt; data_range=[15,20], cb=()->cbf(data_x,data_y,ltc),lower,upper)

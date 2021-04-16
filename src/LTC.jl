@@ -17,7 +17,9 @@ export Functors
 using ComponentArrays
 using Parameters: @unpack
 using NPZ
-
+using Tullio
+using Sundials
+using ODEInterfaceDiffEq
 
 #using ComponentArrays
 using Parameters
@@ -28,15 +30,14 @@ import Flux: OneHotArray, params
 #@reexport using Statistics
 @reexport using Flux, Flux.Zygote
 
-rand_uniform(lb,ub,dims...) = Float32.(rand(Uniform(lb,ub),dims...))# |> f32
-
 
 #include("ltc-modelcleanup.jl")
+include("wiring.jl")
 include("ncp.jl")
 
 
-
-export Wiring, NCP, Mapper, get_bounds
+export Wiring, NCPWiring
+export NCP, Mapper, get_bounds
 
 end
 
