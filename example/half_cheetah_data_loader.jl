@@ -4,7 +4,9 @@
 
 
 function get_dl(; seq_len=32, batchsize=16)
-    data_dir = "/home/david/github/julia/LTC.jl/example/half-cheetah-data"
+    filepath = joinpath(@__DIR__, "half-cheetah-data")
+    @show filepath
+    data_dir = filepath
 
     obs_size = size(npzread("$(data_dir)/trace_0000.npy"),2) # 17
 
@@ -42,29 +44,29 @@ function get_dl(; seq_len=32, batchsize=16)
     # (17x970x32)
 
 
-    # train_x_new = train_y_new = Vector{Matrix{Float32}}[]
-    # test_x_new = test_y_new = Vector{Matrix{Float32}}[]
-    # valid_x_new = valid_y_new = Vector{Matrix{Float32}}[]
-    train_x_new = train_y_new = []
-    test_x_new = test_y_new = []
-    valid_x_new = valid_y_new = []
+    train_x_new = train_y_new = Vector{Matrix{Float32}}[]
+    test_x_new = test_y_new = Vector{Matrix{Float32}}[]
+    valid_x_new = valid_y_new = Vector{Matrix{Float32}}[]
+    # train_x_new = train_y_new = []
+    # test_x_new = test_y_new = []
+    # valid_x_new = valid_y_new = []
     for i in 1:batchsize:size(train_x,2)-batchsize-1
-        # push!(train_x_new, Flux.unstack(train_x[:,i:i+batchsize-1,:],3))
-        # push!(train_y_new, Flux.unstack(train_y[:,i+1:i+batchsize,:],3))
-        push!(train_x_new, train_x[:,i:i+batchsize-1,:])
-        push!(train_y_new, train_y[:,i+1:i+batchsize,:])
+        push!(train_x_new, Flux.unstack(train_x[:,i:i+batchsize-1,:],3))
+        push!(train_y_new, Flux.unstack(train_y[:,i+1:i+batchsize,:],3))
+        # push!(train_x_new, train_x[:,i:i+batchsize-1,:])
+        # push!(train_y_new, train_y[:,i+1:i+batchsize,:])
     end
     for i in 1:batchsize:size(test_x,2)-batchsize-1
-        # push!(test_x_new, Flux.unstack(test_x[:,i:i+batchsize-1,:],3))
-        # push!(test_y_new, Flux.unstack(test_y[:,i+1:i+batchsize,:],3))
-        push!(test_x_new, test_x[:,i:i+batchsize-1,:])
-        push!(test_y_new, test_y[:,i+1:i+batchsize,:])
+        push!(test_x_new, Flux.unstack(test_x[:,i:i+batchsize-1,:],3))
+        push!(test_y_new, Flux.unstack(test_y[:,i+1:i+batchsize,:],3))
+        # push!(test_x_new, test_x[:,i:i+batchsize-1,:])
+        # push!(test_y_new, test_y[:,i+1:i+batchsize,:])
     end
     for i in 1:batchsize:size(valid_x,2)-batchsize-1
-        # push!(valid_x_new, Flux.unstack(valid_x[:,i:i+batchsize-1,:],3))
-        # push!(valid_y_new, Flux.unstack(valid_y[:,i+1:i+batchsize,:],3))
-        push!(valid_x_new, valid_x[:,i:i+batchsize-1,:])
-        push!(valid_y_new, valid_y[:,i+1:i+batchsize,:])
+        push!(valid_x_new, Flux.unstack(valid_x[:,i:i+batchsize-1,:],3))
+        push!(valid_y_new, Flux.unstack(valid_y[:,i+1:i+batchsize,:],3))
+        # push!(valid_x_new, valid_x[:,i:i+batchsize-1,:])
+        # push!(valid_y_new, valid_y[:,i+1:i+batchsize,:])
     end
 
     # train_x_new = Flux.stack(train_x_new,4)
@@ -83,12 +85,12 @@ function get_dl(; seq_len=32, batchsize=16)
     # test_dl = Flux.Data.DataLoader((test_x_new,test_y_new),batchsize=1)
     # valid_dl = Flux.Data.DataLoader((valid_x_new,valid_y_new),batchsize=1)
 
-    @show size(train_x_new)
-    @show size(train_x_new[1])
-    @show size(train_x_new[1][1])
-
-    @show size(train_x_new[2])
-    @show size(train_x_new[2][1])
+    # @show size(train_x_new)
+    # @show size(train_x_new[1])
+    # @show size(train_x_new[1][1])
+    #
+    # @show size(train_x_new[2])
+    # @show size(train_x_new[2][1])
 
     train_dl = zip(train_x_new, test_y_new) |> f32
     test_dl = zip(test_x_new, test_y_new) |> f32

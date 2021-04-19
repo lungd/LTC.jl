@@ -1,81 +1,74 @@
 using LTC
+using Plots
+gr()
+using BenchmarkTools
+using DiffEqSensitivity
+using OrdinaryDiffEq
+using NPZ
 
 include("half_cheetah_data_loader.jl")
 
 
-function loss_model(x,y)
-  Flux.reset!(model)
+function traintest(n, solver, sensealg)
+  function loss(x,y,m)
+    Flux.reset!(m)
 
-  x = Flux.unstack(x,3)
-  y = Flux.unstack(y,3)
+    #x = Flux.unstack(x,3)
+    #y = Flux.unstack(y,3)
 
-  ŷ = model.(x)
+    ŷ = [m(xi) for xi in x]
 
-  sum(sum([(ŷ[i] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y)
-end
-
-
-function logg(l)
-  println(l)
-  tx,ty = first(train_dl)
-  tx = Flux.unstack(tx,3)
-  ty = Flux.unstack(ty,3)
-  pred = model.(tx)
-  fig = plot([ŷ[end-1] for ŷ in pred])
-  plot!(fig, [ŷ[end] for ŷ in pred])
-
-  plot!(fig, [y[end-1] for y in ty])
-  plot!(fig, [y[end] for y in ty])
-
-  display(fig)
-end
-
-
-
-function my_custom_train!(loss, ps, data, opt; data_range=nothing, lower=nothing, upper=nothing, cb=()->nothing)
-  ps = Params(ps)
-  for d in data
-
-    # back is a method that computes the product of the gradient so far with its argument.
-    train_loss, back = Zygote.pullback(() -> loss(d...), ps)
-    logg(train_loss)
-    # Insert whatever code you want here that needs training_loss, e.g. logging.
-    # logging_callback(training_loss)
-    # Apply back() to the correct type of 1.0 to get the gradient of loss.
-    gs = back(one(train_loss))
-    # Insert what ever code you want here that needs gradient.
-    # E.g. logging with TensorBoardLogger.jl as histogram so you can see if it is becoming huge.
-
-    GalacticOptim.Flux.Optimise.update!(opt, ps, gs)
-
-    # Here you might like to check validation set accuracy, and break out to do early stopping.
-
-    lower == nothing && continue
-    upper == nothing && continue
-
-
-    for (i,p) in enumerate(ps[1])
-        ps[1][i] = max(lower[i],ps[1][i])
-        ps[1][i] = min(upper[i],ps[1][i])
-    end
+    sum(sum([(ŷ[i] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y)
   end
+
+  function cb(x,y,l,m)
+    println(l)
+    #pred = m.(x)
+    # isnan(l) && return false
+    # fig = plot([ŷ[1,1] for ŷ in pred])
+	# plot!(fig, [ŷ[end,1] for ŷ in pred])
+    # plot!(fig, [yi[1,1] for yi in y])
+	# plot!(fig, [yi[end,1] for yi in y])
+    # display(fig)
+    return false
+  end
+
+  train_dl, test_dl, valid_dl = get_dl(batchsize=32, seq_len=32)
+  ncp = NCP(NCPWiring(17,2,
+          n_sensory=2, n_inter=3, n_command=2, n_motor=2,
+          sensory_in=-1, rec_sensory=0, sensory_inter=2, sensory_command=0, sensory_motor=0,
+          inter_in=0, rec_inter=2, inter_command=2, inter_motor=0,                       # inter_in = sensory_out
+          command_in=0, rec_command=1, command_motor=10,                   # command_in = inter_out
+          motor_in=0, rec_motor=1), solver, sensealg)
+  model1 = ncp
+  model2 = Dense(2,17,σ)
+  model = Chain(model1, model2)
+  #θ = Flux.params(model1,model2)
+  θ = Flux.params(model)
+  lower,upper = get_bounds(model)
+
+  display(display(Plots.heatmap(ncp.cell.wiring.sens_mask)))
+  display(display(Plots.heatmap(ncp.cell.wiring.syn_mask)))
+
+  display(display(Plots.heatmap(ncp.cell.wiring.sens_pol)))
+  display(display(Plots.heatmap(ncp.cell.wiring.syn_pol)))
+
+  @show length(θ)
+  @show sum([length(p) for p in θ])
+
+  s = sum([length(p) for p in Flux.params(Dense(2,17))]) + sum([length(p) for p in Flux.params(ncp)])
+  @show s
+  @show length(lower)
+  @show length(upper)
+
+  opt = Flux.Optimiser(ClipValue(1), ADAM(0.01f0))
+  my_custom_train!(model, (x,y) -> loss(x,y,model), θ, train_dl, opt; cb, lower, upper)
+  my_custom_train!(model, (x,y) -> loss(x,y,model), θ, train_dl, opt; cb, lower, upper)
 end
 
 
-train_dl, test_dl, valid_dl = get_dl(batchsize=32, seq_len=32)
+#@time traintest(3, Rosenbrock23(), InterpolatingAdjoint(checkpointing=false))
 
-
-model = NCP(Wiring(17,17; n_sensory=4, n_inter=2, n_command=0, n_motor=17))
-y = model(rand(Float32,17,32))
-@time y = model(rand(Float32,17,32))
-
-@time logg(loss_model(first(train_dl)...))
-@time logg(loss_model(first(train_dl)...))
-
-
-opt = GalacticOptim.Flux.Optimiser(ClipValue(0.01), ADAM(0.001))
-
-my_custom_train!((x,y)->loss_model(x,y),ps,train_dl,opt;lower,upper)
-for i in 1:100
-  my_custom_train!((x,y)->loss_model(x,y),ps,train_dl,opt;lower,upper)
-end
+#@time traintest(3, ImplicitEuler(), InterpolatingAdjoint(autojacvec=ZygoteVJP()))
+#@time traintest(3, VCABM(), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
+@time traintest(3, VCABM(), InterpolatingAdjoint(autojacvec=ZygoteVJP()))

@@ -1,5 +1,4 @@
 using LTC
-using GalacticOptim
 using Plots
 gr()
 using BenchmarkTools
@@ -39,55 +38,6 @@ function data(iter; data_x=nothing, data_y=nothing, short=false, noisy=false)
 end
 
 
-function my_custom_train!(m, loss, ps, data, opt; data_range=nothing, lower=nothing, upper=nothing, cb=()->nothing)
-  ps = Params(ps)
-  for d in data
-
-    Flux.reset!(m)
-
-    x, y = d
-
-    if data_range !== nothing
-      seq_start = data_range[1]
-      seq_end = length(data_range) == 2 ? data_range[2] : length(x)
-
-      @views x = x[1:seq_end]
-      @views y = y[1:seq_end]
-
-      if seq_start != 1
-        skipx = x[1:seq_start-1]
-        m.(skipx)
-        @views x = x[seq_start:end]
-        @views y = y[seq_start:end]
-      end
-    end
-
-    # back is a method that computes the product of the gradient so far with its argument.
-    train_loss, back = Zygote.pullback(() -> loss(x,y), ps)
-    cb(x,y,train_loss,m)
-    # Insert whatever code you want here that needs training_loss, e.g. logging.
-    # logging_callback(training_loss)
-    # Apply back() to the correct type of 1.0 to get the gradient of loss.
-    gs = back(one(train_loss))
-    # Insert what ever code you want here that needs gradient.
-    # E.g. logging with TensorBoardLogger.jl as histogram so you can see if it is becoming huge.
-
-    GalacticOptim.Flux.Optimise.update!(opt, ps, gs)
-
-    # Here you might like to check validation set accuracy, and break out to do early stopping.
-
-    lower == nothing && continue
-    upper == nothing && continue
-
-
-    for (i,p) in enumerate(ps[1])
-      ps[1][i] = max(lower[i],p)
-      ps[1][i] = min(upper[i],p)
-    end
-  end
-end
-
-
 
 function traintest(n, solver, sensealg)
   function loss(x,y,m)
@@ -106,21 +56,29 @@ function traintest(n, solver, sensealg)
   end
 
   x,y = generate_data()
-  model = NCP(Wiring(2,1), solver, sensealg)
+  model = NCP(NCPWiring(2,1), solver, sensealg)
   θ = Flux.params(model)
   lower,upper = get_bounds(model)
 
-  opt = GalacticOptim.Flux.Optimiser(ClipValue(1), ADAM(0.01f0))
+  display(display(Plots.heatmap(model.cell.wiring.sens_mask)))
+  display(display(Plots.heatmap(model.cell.wiring.syn_mask)))
+
+  opt = Flux.Optimiser(ClipValue(1), ADAM(0.01f0))
   my_custom_train!(model, (x,y) -> loss(x,y,model), θ, data(3), opt; cb, lower, upper)
   my_custom_train!(model, (x,y) -> loss(x,y,model), θ, data(n), opt; cb, lower, upper)
 end
 
 
-@time traintest(3, VCABM(), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
+@btime traintest(3, VCABM(), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
+@btime traintest(3, VCABM(), InterpolatingAdjoint(autojacvec=ZygoteVJP()))
+@time traintest(300, VCABM(), InterpolatingAdjoint(autojacvec=ZygoteVJP()))
 @time traintest(300, VCABM(), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
 
 @time traintest(3, AutoTsit5(Rosenbrock23()), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
 @time traintest(300, AutoTsit5(Rosenbrock23()), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
+
+
+#  2.118 s (6965793 allocations: 461.57 MiB)
 
 #ltc = Flux.Chain(Dense(2,5),Flux.LSTM(5,5),Flux.Dense(5,1))
 

@@ -1,43 +1,50 @@
 module LTC
 
-using Reexport
+#using Reexport
 
 using Flux
 using DiffEqBase
 using OrdinaryDiffEq
 using DiffEqSensitivity
-using DiffEqCallbacks
+#using DiffEqCallbacks
 using Distributions
 using NPZ
-using BenchmarkTools
-using Plots
-using Noise
-@reexport using Functors
-export Functors
-using ComponentArrays
-using Parameters: @unpack
+#using BenchmarkTools
+#using Plots
+#using Noise
+#@reexport using Functors
+#export Functors
+#using ComponentArrays
+#using Parameters: @unpack
 using NPZ
 using Tullio
-using Sundials
-using ODEInterfaceDiffEq
+using Zygote
+#using Sundials
+#using ODEInterfaceDiffEq
+#using RecursiveArrayTools
 
 #using ComponentArrays
-using Parameters
+#using Parameters
 #using UnicodePlots
 
-import Flux: OneHotArray, params
 
 #@reexport using Statistics
-@reexport using Flux, Flux.Zygote
+#@reexport using Zygote
+
 
 
 #include("ltc-modelcleanup.jl")
 include("wiring.jl")
 include("ncp.jl")
+include("custom_train.jl")
 
+get_bounds(m::Function) = [],[]
+get_bounds(m::Flux.Chain) = [reduce(vcat, [get_bounds(l)[1] for l in m.layers]), reduce(vcat, [get_bounds(l)[2] for l in m.layers])]
+get_bounds(m::Flux.Dense) = [vcat([-1f0 for _ in 1:length(m.weight)], [-1f0 for _ in 1:length(m.bias)]), vcat([1f0 for _ in 1:length(m.weight)], [1f0 for _ in 1:length(m.bias)])]
+export get_bounds
 
 export Wiring, NCPWiring
-export NCP, Mapper, get_bounds
+export NCP, Mapper, get_bounds, my_custom_train!
 
 end
 
