@@ -1,14 +1,13 @@
 module LTC
 
-#using Reexport
+using Reexport
 
-using Flux
-using DiffEqBase
-using OrdinaryDiffEq
-using DiffEqSensitivity
+@reexport using Flux
+@reexport using DiffEqBase
+@reexport using OrdinaryDiffEq
+@reexport using DiffEqSensitivity
 #using DiffEqCallbacks
 using Distributions
-using NPZ
 #using BenchmarkTools
 #using Plots
 #using Noise
@@ -31,7 +30,9 @@ using Zygote
 #@reexport using Statistics
 #@reexport using Zygote
 
-
+export Flux
+import NPZ: npzread
+export npzread
 
 #include("ltc-modelcleanup.jl")
 include("wiring.jl")

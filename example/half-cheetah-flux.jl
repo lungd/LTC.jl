@@ -2,9 +2,6 @@ using LTC
 using Plots
 gr()
 using BenchmarkTools
-using DiffEqSensitivity
-using OrdinaryDiffEq
-using NPZ
 
 include("half_cheetah_data_loader.jl")
 
@@ -12,9 +9,6 @@ include("half_cheetah_data_loader.jl")
 function traintest(n, solver, sensealg)
   function loss(x,y,m)
     Flux.reset!(m)
-
-    #x = Flux.unstack(x,3)
-    #y = Flux.unstack(y,3)
 
     ŷ = [m(xi) for xi in x]
 
@@ -47,28 +41,33 @@ function traintest(n, solver, sensealg)
   θ = Flux.params(model)
   lower,upper = get_bounds(model)
 
-  display(display(Plots.heatmap(ncp.cell.wiring.sens_mask)))
-  display(display(Plots.heatmap(ncp.cell.wiring.syn_mask)))
+  # @show length(train_dl)
+  # @show size(first(train_dl)[1])
+  # @show size(first(train_dl)[1][1])
+  #
+  # display(display(Plots.heatmap(ncp.cell.wiring.sens_mask)))
+  # display(display(Plots.heatmap(ncp.cell.wiring.syn_mask)))
+  #
+  # display(display(Plots.heatmap(ncp.cell.wiring.sens_pol)))
+  # display(display(Plots.heatmap(ncp.cell.wiring.syn_pol)))
 
-  display(display(Plots.heatmap(ncp.cell.wiring.sens_pol)))
-  display(display(Plots.heatmap(ncp.cell.wiring.syn_pol)))
-
-  @show length(θ)
   @show sum([length(p) for p in θ])
-
-  s = sum([length(p) for p in Flux.params(Dense(2,17))]) + sum([length(p) for p in Flux.params(ncp)])
-  @show s
   @show length(lower)
-  @show length(upper)
 
-  opt = Flux.Optimiser(ClipValue(1), ADAM(0.01f0))
+
+  opt = Flux.Optimiser(ClipValue(0.1), ADAM(0.001))
   my_custom_train!(model, (x,y) -> loss(x,y,model), θ, train_dl, opt; cb, lower, upper)
   my_custom_train!(model, (x,y) -> loss(x,y,model), θ, train_dl, opt; cb, lower, upper)
 end
+
+
+@time traintest(3, VCABM(), InterpolatingAdjoint(autojacvec=ZygoteVJP()))
+
+
+
 
 
 #@time traintest(3, Rosenbrock23(), InterpolatingAdjoint(checkpointing=false))
 
 #@time traintest(3, ImplicitEuler(), InterpolatingAdjoint(autojacvec=ZygoteVJP()))
 #@time traintest(3, VCABM(), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
-@time traintest(3, VCABM(), InterpolatingAdjoint(autojacvec=ZygoteVJP()))

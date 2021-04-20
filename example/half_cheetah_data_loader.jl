@@ -92,9 +92,9 @@ function get_dl(; seq_len=32, batchsize=16)
     # @show size(train_x_new[2])
     # @show size(train_x_new[2][1])
 
-    train_dl = zip(train_x_new, test_y_new) |> f32
-    test_dl = zip(test_x_new, test_y_new) |> f32
-    valid_dl = zip(valid_x_new, valid_y_new) |> f32
+    train_dl = zip(train_x_new, test_y_new) #|> f32
+    test_dl = zip(test_x_new, test_y_new) #|> f32
+    valid_dl = zip(valid_x_new, valid_y_new) #|> f32
 
     # train_dl = (train_x_new, test_y_new)
     # test_dl = (test_x_new, test_y_new)
