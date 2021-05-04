@@ -69,44 +69,7 @@ doComponentContainer(components, x, I) = reshape(mapreduce(dst -> mapreduce(src 
 Flux.@functor ComponentContainer
 
 
-mutable struct LTCNet{MI,MO,T,S}
-  mapin::MI
-  mapout::MO
-  cell::T
-  state::S
-  LTCNet(mapin,mapout,cell,state) = new{typeof(mapin),typeof(mapout),typeof(cell),typeof(state)}(mapin,mapout,cell,state)
-end
-function LTCNet(wiring,solver,sensealg)
-  mapin = Mapper(wiring.n_in)
-  mapout = Mapper(wiring.n_total)
-  cell = LTCCell(wiring,solver,sensealg)
-  LTCNet(mapin,mapout,cell,cell.state0)
-end
-
-function (m::LTCNet{MI,MO,T,<:AbstractMatrix{T2}})(x::AbstractVecOrMat{T2}) where {MI,MO,T,T2}
-  x = m.mapin(x)
-  m.state, y = m.cell(m.state, x)
-  y = m.mapout(y)
-  return y
-end
-
-Flux.@functor LTCNet
-Flux.trainable(m::LTCNet) = (m.mapin, m.mapout, m.cell,)
-Flux.reset!(m::LTCNet) = (m.state = m.cell.state0)
-Base.show(io::IO, m::LTCNet) = print(io, "LTCNet(", m.mapin, ",", m.mapout, ",", m.cell, ")")
-function Base.getproperty(m::LTCNet, sym::Symbol)
-  if sym === :init
-    Zygote.ignore() do
-      @warn "LTCNet field :init has been deprecated. To access initial state weights, use m::LTCNet.cell.state0 instead."
-    end
-    return getfield(m.cell, :state0)
-  else
-    return getfield(m, sym)
-  end
-end
-
-
-struct LTCCell{W,SE,SY,LE,CC,CCP,CCRE,V,S,SOLVER,SENSEALG}
+struct LTCCell{W<:Wiring,SE<:ComponentContainer,SY<:ComponentContainer,LE<:LeakChannel,CC<:Flux.Parallel,CCP<:AbstractArray,CCRE<:Function,V<:AbstractArray,S<:AbstractMatrix,SOLVER,SENSEALG}
   wiring::W
   sens::SE
   syns::SY
@@ -218,6 +181,45 @@ function solve_ode(m,h::Matrix{T},x::Matrix)::Matrix{Float32} where T
   # prob_jac = ODEProblem(f,h,tspan,p)
 
   solve(prob,m.solver; sensealg=m.sensealg, save_everystep=false, save_start=false, abstol=1e-3, reltol=1e-3)[:,:,end]
+end
+
+
+
+
+mutable struct LTCNet{MI<:Mapper,MO<:Mapper,T<:LTCCell,S}
+  mapin::MI
+  mapout::MO
+  cell::T
+  state::S
+  LTCNet(mapin,mapout,cell,state) = new{typeof(mapin),typeof(mapout),typeof(cell),typeof(state)}(mapin,mapout,cell,state)
+end
+function LTCNet(wiring,solver,sensealg)
+  mapin = Mapper(wiring.n_in)
+  mapout = Mapper(wiring.n_total)
+  cell = LTCCell(wiring,solver,sensealg)
+  LTCNet(mapin,mapout,cell,cell.state0)
+end
+
+function (m::LTCNet{MI,MO,T,<:AbstractMatrix{T2}})(x::AbstractVecOrMat{T2}) where {MI,MO,T,T2}
+  x = m.mapin(x)
+  m.state, y = m.cell(m.state, x)
+  y = m.mapout(y)
+  return y
+end
+
+Flux.@functor LTCNet
+Flux.trainable(m::LTCNet) = (m.mapin, m.mapout, m.cell,)
+Flux.reset!(m::LTCNet) = (m.state = m.cell.state0)
+Base.show(io::IO, m::LTCNet) = print(io, "LTCNet(", m.mapin, ",", m.mapout, ",", m.cell, ")")
+function Base.getproperty(m::LTCNet, sym::Symbol)
+  if sym === :init
+    Zygote.ignore() do
+      @warn "LTCNet field :init has been deprecated. To access initial state weights, use m::LTCNet.cell.state0 instead."
+    end
+    return getfield(m.cell, :state0)
+  else
+    return getfield(m, sym)
+  end
 end
 
 

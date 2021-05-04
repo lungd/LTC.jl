@@ -5,7 +5,7 @@ using BenchmarkTools
 using DiffEqSensitivity
 using OrdinaryDiffEq
 #using DiffEqFlux
-#using GalacticOptim
+using GalacticOptim
 using Juno
 using Cthulhu
 #using Profile
@@ -44,7 +44,7 @@ function data(iter; data_x=nothing, data_y=nothing, short=false, noisy=false)
 end
 
 
-function loss(x,y,m)
+function loss(x,y,m::LTCNet{<:Mapper,<:Mapper,<:LTC.LTCCell,<:AbstractMatrix})
   Flux.reset!(m)
   #m = re(θ)
   #ŷ = m.(x)
