@@ -175,7 +175,7 @@ cthulu_test()
 
 #@time traintest(10, AutoTsit5(Rosenbrock23()))
 @time traintest(10)
-@time traintest(300)
+@time traintest(30)
 #00:53 - 01:02 = 9 min compilation time
 
 
