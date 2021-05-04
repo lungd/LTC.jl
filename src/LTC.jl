@@ -36,6 +36,7 @@ using Tullio
 using Zygote
 using Zygote: @adjoint, Numeric, literal_getproperty, accum
 # using ReverseDiff
+using ForwardDiff
 
 #using ZygoteRules
 #using ForwardDiff

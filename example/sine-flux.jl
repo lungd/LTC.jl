@@ -168,37 +168,6 @@ end
 cthulu_test()
 
 
-# import Base: *
-# *(::Flux.Zeros, b::AbstractArray) = -b
-# *(a::AbstractArray, ::Flux.Zeros) = a
-function gtest(g,e,m)
-  loss(p) = sum(m .* g)
-  gs = Flux.Zygote.gradient(Flux.params(g)) do
-    sum([sum((g[i,i] .- e[i,i]) .* m[i,i]) for i in 1:size(g,1)])
-  end
-  @show gs[g][1,1]
-  @show gs[g][1,2]
-end
-function ztest()
-  g = ones(Float32, 100,100)
-  e = rand(Float32,100,100)
-  m = zeros(Float32, 100,100)
-  for i = 1:size(m,1)
-    m[i,i] = 1
-  end
-  # m = sparse(m)
-  #m = m - LinearAlgebra.I
-  # m = Array(m)
-  # Diagonal(m)
-  @show typeof(m)
-  @show typeof(g)
-  @show typeof(e)
-  #m[1,1] = 1f0
-  @time gtest(g,e,m)
-
-end
-ztest()
-
 # model = NCP(Wiring(2,1), VCABM(), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
 # ppp = Flux.params(model)
 # sum(length.(ppp))
@@ -211,16 +180,16 @@ ztest()
 
 
 #@time traintest(300, VCABM(), ForwardDiffSensitivity())
-@time traintest(300, VCABM(), ReverseDiffAdjoint())
+#@time traintest(300, VCABM(), ReverseDiffAdjoint())
 # @time traintest(300, Euler(), ForwardDiffSensitivity())
-@time traintest(300, VCABM(), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
-@time traintest(300, VCABM(), InterpolatingAdjoint(autojacvec=false))
-@time traintest(300, VCABM(), InterpolatingAdjoint(autojacvec=ZygoteVJP()))
-@time traintest(300, VCABM(), InterpolatingAdjoint(checkpointing=true))
-traintest(300, AutoTsit5(Rosenbrock23()), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
-@btime traintest(3, CVODE_BDF(linear_solver=:GMRES), InterpolatingAdjoint(autojacvec=ZygoteVJP()))
-@time traintest(300, CVODE_BDF(linear_solver=:GMRES), InterpolatingAdjoint(autojacvec=ZygoteVJP()))
-@time traintest(300, CVODE_BDF(linear_solver=:GMRES), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
+#@time traintest(300, VCABM(), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
+#@time traintest(300, VCABM(), InterpolatingAdjoint(autojacvec=false))
+#@time traintest(300, VCABM(), InterpolatingAdjoint(autojacvec=ZygoteVJP()))
+#@time traintest(300, VCABM(), InterpolatingAdjoint(checkpointing=true))
+#traintest(300, AutoTsit5(Rosenbrock23()), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
+#@btime traintest(3, CVODE_BDF(linear_solver=:GMRES), InterpolatingAdjoint(autojacvec=ZygoteVJP()))
+#@time traintest(300, CVODE_BDF(linear_solver=:GMRES), InterpolatingAdjoint(autojacvec=ZygoteVJP()))
+#@time traintest(300, CVODE_BDF(linear_solver=:GMRES), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
 
 #  601.084 ms (1153411 allocations: 98.26 MiB)
 #  8.510164 seconds (35.02 M allocations: 3.450 GiB, 5.96% gc time)
@@ -252,47 +221,4 @@ traintest(300, AutoTsit5(Rosenbrock23()), InterpolatingAdjoint(autojacvec=Revers
 # Flux.train!((x,y)->lossf(x,y)[1],Flux.params(ltc),data(200),ADAM(0.02); cb = ()->cbf(data_x,data_y,ltc))
 
 
-const testMD = Flux.Dense(2,1)
-const testMM = Mapper(2)
-const testMG = gNN(1,1)
 
-const testM = NCP(Wiring(2,1), VCABM(), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
-const x2 = rand(Float32,2,1)
-@time testM(x2)
-@descend_code_warntype testM(x2)
-@descend testM(x2)
-
-@code_warntype testM(x2)
-@code_warntype testM.cell(testM.state,x2)
-
-const testLTC = LTC.LTCCell(Wiring(2,1), VCABM(), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
-const testhh = rand(Float32,8,1)
-testLTC(testhh,x2)
-@code_warntype testLTC(testhh,x2,testLTC.p)
-
-const x1 = rand(Float32,2)
-
-function warntest(x, m)
-  m(x)
-end
-
-@code_warntype testMD(x1)
-testMM(x1,p=testMM.p)
-
-
-
-const td = data(1)
-const xx, yy = first(td)
-const pp = Flux.params(testM)
-Juno.@profiler train_loss, back = Flux.Zygote.pullback(() -> loss(x,y,testM), Flux.Params(θ))
-Juno.@profiler gs = back(one(train_loss))
-@time train_loss, back = Flux.Zygote.pullback(() -> loss(x,y,testM), Flux.Params(θ))
-@time gs = back(one(train_loss))
-
-
-@profile train_loss, back = Flux.Zygote.pullback(() -> loss(x,y,testM), Flux.Params(θ))
-pprof(;webport=58599)
-
-@time my_custom_train!(testM, (x,y) -> loss(x,y,testM), θ, train_data, ADAM(); cb)
-
-Juno.@profiler my_custom_train!(testM, (x,y) -> loss(x,y,testM), θ, train_data, ADAM(); cb)

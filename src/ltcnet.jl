@@ -1,13 +1,16 @@
 abstract type Component end
 abstract type CurrentComponent <:Component end
 
-struct Mapper{V<:AbstractVector,B}
+struct Mapper{V<:AbstractVector}
   W::V
-  b::B
-  Mapper(W::V,b) where {V<:AbstractVector} = new{V,typeof(b)}(W,b)
+  b::V
+  Mapper(W::V,b::V) where {V<:AbstractVector} = new{typeof(W)}(W,b)
 end
 Mapper(in::Integer) = Mapper(ones(Float32,in), zeros(Float32,in))
-(m::Mapper)(x::AbstractVecOrMat) = m.W .* x .+ m.b
+function (m::Mapper{<:Vector{T}})(x::AbstractVecOrMat{T}) where T
+  W,b = m.W, m.b
+  W .* x .+ b
+end
 Flux.@functor Mapper
 Flux.trainable(m::Mapper) = (m.W, m.b,)
 Base.show(io::IO, m::Mapper) = print(io, "Mapper(", length(m.W), ")")
@@ -201,9 +204,9 @@ function LTCNet(wiring,solver,sensealg)
 end
 
 function (m::LTCNet{MI,MO,T,<:AbstractMatrix{T2}})(x::AbstractVecOrMat{T2}) where {MI,MO,T,T2}
-  x = m.mapin(x)
-  m.state, y = m.cell(m.state, x)
-  y = m.mapout(y)
+  x1 = m.mapin(x)
+  m.state, y1 = m.cell(m.state, x1)
+  y = m.mapout(y1)
   return y
 end
 
