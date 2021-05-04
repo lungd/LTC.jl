@@ -2,67 +2,138 @@ using LTC
 using Plots
 gr()
 using BenchmarkTools
+using DiffEqSensitivity
+using OrdinaryDiffEq
+#using DiffEqFlux
+#using GalacticOptim
 
 include("half_cheetah_data_loader.jl")
 
 
-function traintest(n, solver, sensealg)
-  function loss(x,y,m)
-    Flux.reset!(m)
-
-    ŷ = [m(xi) for xi in x]
-
-    sum(sum([(ŷ[i] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y)
-  end
+function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
+	function loss(x,y,m)
+	  Flux.reset!(m)
+	  #m = re(θ)
+	  #ŷ = m.(x)
+	  ŷ = map(xi -> m(xi), x)
+	  #ŷ = [m(xi)[end-m.cell.wiring.n_motor+1:end, :] for xi in x]
+	  #ŷ = m.(x)
+	  #length(ŷ) < length(y) && return Inf
+	  #sum(Flux.Losses.mse.(ŷ, y; agg=mean))
+	  sum(sum([(ŷ[i] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y)#, ŷ
+	  #sum([sum((ŷ[i] .- y[i]) .^ 2) for i in 1:length(y)])/length(y)
+	end
 
   function cb(x,y,l,m)
     println(l)
-    #pred = m.(x)
-    # isnan(l) && return false
+    # pred = m.(x)
+    # # isnan(l) && return false
     # fig = plot([ŷ[1,1] for ŷ in pred])
-	# plot!(fig, [ŷ[end,1] for ŷ in pred])
+	#   plot!(fig, [ŷ[end,1] for ŷ in pred])
     # plot!(fig, [yi[1,1] for yi in y])
-	# plot!(fig, [yi[end,1] for yi in y])
+	#   plot!(fig, [yi[end,1] for yi in y])
     # display(fig)
     return false
   end
 
+  function lg(p,x,y)
+	m = model
+	Flux.reset!(m)
+	ŷ = m.(x,[p])
+    sum(sum([(ŷ[i] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y), ŷ
+  end
+  cbg = function (p,l,pred;doplot=false) #callback function to observe training
+   display(l)
+    # plot current prediction against data
+    if doplot
+  	  pl = scatter(first(train_dl)[1],label="data")
+	  scatter!(pl,pred[1,:],label="prediction")
+	  display(plot(pl))
+	end
+	return false
+  end
+
   train_dl, test_dl, valid_dl = get_dl(batchsize=32, seq_len=32)
-  ncp = NCP(NCPWiring(17,2,
-          n_sensory=2, n_inter=3, n_command=2, n_motor=2,
+  ncp = LTC.LTCNet(NCPWiring(17,17,
+          n_sensory=4, n_inter=4, n_command=8, n_motor=2,
           sensory_in=-1, rec_sensory=0, sensory_inter=2, sensory_command=0, sensory_motor=0,
-          inter_in=0, rec_inter=2, inter_command=2, inter_motor=0,                       # inter_in = sensory_out
-          command_in=0, rec_command=1, command_motor=10,                   # command_in = inter_out
-          motor_in=0, rec_motor=1), solver, sensealg)
+          inter_in=2, rec_inter=2, inter_command=3, inter_motor=1,                       # inter_in = sensory_out
+          command_in=0, rec_command=4, command_motor=2,                   # command_in = inter_out
+          motor_in=0, rec_motor=3), solver, sensealg)
   model1 = ncp
-  model2 = Dense(2,17,σ)
-  model = Chain(model1, model2)
+  #model2 = DiffEqFlux.FastDense(2,17)
+  #model = DiffEqFlux.FastChain(model1, model2)
+  model2 = Dense(2,17)
+  model = Chain(model1, x -> x[end-1:end, :], model2)
+  #model = model1
+  # model = Chain(ncp, x -> x[end-16:end, :])
   #θ = Flux.params(model1,model2)
   θ = Flux.params(model)
-  lower,upper = get_bounds(model)
+  @show sum(length.(θ))
+  # pp = DiffEqFlux.initial_params(model)
+  #lower,upper = get_bounds(model)
+  lower,upper = [],[]
+  @show length(lower)
 
   # @show length(train_dl)
   # @show size(first(train_dl)[1])
   # @show size(first(train_dl)[1][1])
   #
-  # display(display(Plots.heatmap(ncp.cell.wiring.sens_mask)))
-  # display(display(Plots.heatmap(ncp.cell.wiring.syn_mask)))
+  # display(Plots.heatmap(ncp.cell.wiring.sens_mask))
+  # display(Plots.heatmap(ncp.cell.wiring.syn_mask))
   #
-  # display(display(Plots.heatmap(ncp.cell.wiring.sens_pol)))
-  # display(display(Plots.heatmap(ncp.cell.wiring.syn_pol)))
+  # display(Plots.heatmap(ncp.cell.wiring.sens_pol))
+  # display(Plots.heatmap(ncp.cell.wiring.syn_pol))
 
-  @show sum([length(p) for p in θ])
-  @show length(lower)
+  #@show sum([length(p) for p in θ])
+  #@show length(lower)
+  # @show length(pp)
 
+  # model.(first(train_dl)[1])
+  # model.(first(train_dl)[1])
+  # model.(first(train_dl)[1])
 
-  opt = Flux.Optimiser(ClipValue(0.1), ADAM(0.001))
-  my_custom_train!(model, (x,y) -> loss(x,y,model), θ, train_dl, opt; cb, lower, upper)
-  my_custom_train!(model, (x,y) -> loss(x,y,model), θ, train_dl, opt; cb, lower, upper)
+  opt = Flux.Optimiser(ClipValue(0.5), ADAM(0.3))
+
+  # optfun = OptimizationFunction((θ, p, x, y) -> lg(θ,x,y), GalacticOptim.AutoZygote())
+  # optprob = OptimizationProblem(optfun, pp, lb=lower, ub=upper)
+  # #using IterTools: ncycle
+  # res1 = GalacticOptim.solve(optprob, opt, train_dl, cb = cbg, maxiters = n)
+  # return res1
+
+  #my_custom_train!(model, (x,y) -> loss(x,y,model), θ, train_dl, opt; cb, lower, upper)
+  Flux.@epochs n my_custom_train!(model, (x,y) -> loss(x,y,model), θ, train_dl, opt; cb, lower, upper)
 end
 
 
-@time traintest(3, VCABM(), InterpolatingAdjoint(autojacvec=ZygoteVJP()))
+# @time traintest(1, VCABM(), ZygoteAdjoint())
 
+
+@time traintest(10)
+
+@time traintest(10, VCABM(), ForwardDiffSensitivity())
+@time traintest(10, VCABM(), ReverseDiffAdjoint())
+@time traintest(10, VCABM(), QuadratureAdjoint(autojacvec=ReverseDiffVJP(true)))
+# 192.343950 seconds (206.01 M allocations: 64.016 GiB, 4.65% gc time, 22.36% compilation time)
+# 138.803175 seconds (159.75 M allocations: 51.048 GiB, 5.04% gc time)
+# 89.533896 seconds (346.13 M allocations: 138.572 GiB, 23.55% gc time)
+@time traintest(10, AutoTsit5(Rosenbrock23()), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
+
+
+@time traintest(1, VCABM(), InterpolatingAdjoint(checkpointing=true, autojacvec=ZygoteVJP()))
+@time traintest(1, VCABM(), TrackerAdjoint())
+@time traintest(1, VCABM(), InterpolatingAdjoint(autojacvec=ZygoteVJP()))
+@time traintest(1, VCABM(), QuadratureAdjoint(compile=true, abstol=1e-3,reltol=1e-3, autojacvec=ZygoteVJP()))
+@time traintest(1, VCABM(), QuadratureAdjoint(compile=true, abstol=1e-3,reltol=1e-3, autojacvec=ReverseDiffVJP(true)))
+@time traintest(1, Tsit5(), ZygoteAdjoint())
+# 142.623700 seconds (1.43 G allocations: 380.410 GiB, 45.09% gc time, 0.02% compilation time)
+
+@time traintest(1, VCABM(), ReverseDiffAdjoint())
+@time traintest(1, CVODE_BDF(linear_solver=:GMRES), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
+@time traintest(1, VCABM(), InterpolatingAdjoint(checkpointing=true, autojacvec=ReverseDiffVJP(true)))
+# 161.160516 seconds (985.58 M allocations: 201.055 GiB, 22.29% gc time, 9.22% compilation time)
+
+#@time traintest(3, VCABM(), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
 
 
 

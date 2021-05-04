@@ -5,7 +5,6 @@
 
 function get_dl(; seq_len=32, batchsize=16)
     filepath = joinpath(@__DIR__, "half-cheetah-data")
-    @show filepath
     data_dir = filepath
 
     obs_size = size(npzread("$(data_dir)/trace_0000.npy"),2) # 17

@@ -1,6 +1,6 @@
 abstract type WiringT <: Function end
 
-struct Wiring{M1,M2,M3,M4} <: WiringT
+struct Wiring <: WiringT
     n_in::Int
     out::Int
     n_sensory::Int
@@ -14,17 +14,20 @@ struct Wiring{M1,M2,M3,M4} <: WiringT
     rec_command_out::Int
     motor_in::Int
 
-    sens_mask::M1
-    syn_mask::M2
+    sens_mask::Matrix{Float32}
+    syn_mask::Matrix{Float32}
 
-    sens_pol::M3
-    syn_pol::M4
+    sens_pol::Matrix{Float32}
+    syn_pol::Matrix{Float32}
 
-    function Wiring(n_in,out,n_sensory,n_inter,n_command,n_motor,n_total,sensory_out,inter_out,rec_command_out,motor_in,sens_mask,syn_mask,sens_pol,syn_pol)
-        new{typeof(sens_mask),typeof(syn_mask),typeof(sens_pol),typeof(syn_pol)}(
-                    n_in,out,n_sensory,n_inter,n_command,n_motor,n_total,sensory_out,inter_out,rec_command_out,motor_in,sens_mask,syn_mask,sens_pol,syn_pol)
-    end
+    # function Wiring(n_in,out,n_sensory,n_inter,n_command,n_motor,n_total,sensory_out,inter_out,rec_command_out,motor_in,sens_mask,syn_mask,sens_pol,syn_pol)
+    #     new{typeof(sens_mask),typeof(syn_mask),typeof(sens_pol),typeof(syn_pol)}(
+    #                 n_in,out,n_sensory,n_inter,n_command,n_motor,n_total,sensory_out,inter_out,rec_command_out,motor_in,sens_mask,syn_mask,sens_pol,syn_pol)
+    # end
 end
+
+get_n_in(m::Wiring) = m.n_in
+get_n_total(m::Wiring) = m.n_total
 
 function Wiring(in::Int, out::Int;
                 n_sensory=2, n_inter=5, n_command=0, n_motor=1,
