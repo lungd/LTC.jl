@@ -4,11 +4,11 @@ gr()
 using BenchmarkTools
 using DiffEqSensitivity
 using OrdinaryDiffEq
-#using DiffEqFlux
+using DiffEqFlux
 using GalacticOptim
 using Juno
 using Cthulhu
-#using Profile
+using Profile
 #using PProf
 
 function generate_data()
@@ -45,11 +45,11 @@ end
 
 
 function loss(x,y,m::LTCNet{<:Mapper,<:Mapper,<:LTC.LTCCell,<:AbstractMatrix})
-  Flux.reset!(m)
+  GalacticOptim.Flux.reset!(m)
   #m = re(θ)
   #ŷ = m.(x)
-  ŷ = map(xi -> m(xi)[end-m.cell.wiring.n_motor+1:end, :], x)
-  #ŷ = [m(xi)[end-m.cell.wiring.n_motor+1:end, :] for xi in x]
+  #ŷ = map(xi -> m(xi)[end-m.cell.wiring.n_motor+1:end, :], x)
+  ŷ = [m(xi)[end-m.cell.wiring.n_motor+1:end, :] for xi in x]
   #ŷ = m.(x)
   #length(ŷ) < length(y) && return Inf
   #sum(Flux.Losses.mse.(ŷ, y; agg=mean))
@@ -68,17 +68,19 @@ end
 
 function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
 
-  function lg(p,model)
-    d = train_data[1]
-    x,y = d[1], d[2]
+  function lg(p,x,y,model)
+    # reset_state!(model,p)
+    reset!(model)
+    # d = train_data[1]
+    # x,y = d[1], d[2]
     m = model
-    ŷ = [m(xi,p) for xi in x]
+    ŷ = [m(xi,p)[end-m.cell.wiring.n_motor+1:end, :] for xi in x]
     #ŷ = m.(x,[p])
     #losses = [Flux.Losses.mse(ŷ[i][end,:], y[i]) for i in 1:length(y)]
     #sum(losses)/length(losses), ŷ
     sum(sum([(ŷ[i][end,:] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y), ŷ
   end
-  cbg = function (p,l,pred;doplot=true) #callback function to observe training
+  cbg = function (p,l,pred;doplot=false) #callback function to observe training
     display(l)
     # plot current prediction against data
     if doplot
@@ -95,16 +97,19 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   # pp = DiffEqFlux.initial_params(model)
   # lower,upper = get_bounds(model)
   lower,upper = [],[]
-  θ = Flux.params(model)
+  #θ = Flux.params(model)
   #θ = Flux.params(pp)
 
+  pp = DiffEqFlux.initial_params(model)
+  @show length(pp)
+  @show length(pp)
 
-  @show sum(length.(θ))
+  #@show sum(length.(θ))
   @show length(lower)
 
   train_data = data(n)
 
-  opt = Flux.Optimiser(ClipValue(1), ADAM(0.03))
+  opt = GalacticOptim.Flux.Optimiser(ClipValue(0.5), ADAM(0.05))
 
 
   # Juno.@profiler gs = Flux.Zygote.gradient(θ) do
@@ -147,9 +152,23 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   #return res1
 
   #Flux.train!((x,y) -> loss(x,y,model), θ, train_data, opt; cb)
-  my_custom_train!(model, (x,y) -> loss(x,y,model), θ, data(3), opt; cb, lower, upper)
-  # Juno.@profiler my_custom_train!(model, (x,y) -> loss(x,y,model), θ, train_data, opt; cb, lower, upper)
-  my_custom_train!(model, (x,y) -> loss(x,y,model), θ, train_data, opt; cb, lower, upper)
+
+  Profile.clear()
+  Profile.clear_malloc_data()
+
+  optfun = OptimizationFunction((θ, p, x, y) -> lg(θ,x,y,model), GalacticOptim.AutoZygote())
+  optprob = OptimizationProblem(optfun, pp)
+  #using IterTools: ncycle
+  #Juno.@profiler GalacticOptim.solve(optprob, opt, train_data, cb = cbg, maxiters = n) C = true
+  GalacticOptim.solve(optprob, opt, train_data, cb = cbg, maxiters = 1000)
+
+
+
+  # sciml_train(p->lg(p,model), pp, opt, cb = cbg, maxiters=100)
+
+
+
+  #Juno.@profiler my_custom_train!(model, (x,y) -> loss(x,y,model), θ, train_data, opt; cb, lower, upper) C = true
 end
 
 
@@ -157,16 +176,19 @@ end
 function cthulu_test()
 
   m = LTC.LTCNet(Wiring(2,1), VCABM(), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
-  x = rand(Float32,2,1)
-  m(x)
+  x = [rand(Float32,2,1) for _ in 1:10]
+  p = initial_params(m)
+  m.(x,[p])
+  @time m.(x,[p])
+  # @profile m.(x)
   #d = Dense(2,2)
   # r = RNN(2,2)
   # @descend_code_warntype r(x)
-  Flux.reset!(m)
-  @descend_code_warntype m(x)
+  #Flux.reset!(m)
+  @descend_code_warntype m(x[1],p)
 end
-cthulu_test()
-
+# cthulu_test()
+#Profile.print()
 
 # model = NCP(Wiring(2,1), VCABM(), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
 # ppp = Flux.params(model)
@@ -174,8 +196,8 @@ cthulu_test()
 # Flux.trainable(model)
 
 #@time traintest(10, AutoTsit5(Rosenbrock23()))
-@time traintest(10)
-@time traintest(30)
+@time traintest(40)
+#@time traintest(10)
 #00:53 - 01:02 = 9 min compilation time
 
 
@@ -219,6 +241,3 @@ cthulu_test()
 # my_custom_train!(ltc, (x,y) -> lossf(x,y)[1], Flux.params(ltc), data(3000), ADAM(0.001); cb=()->cbf(data_x,data_y,ltc),lower,upper)
 #
 # Flux.train!((x,y)->lossf(x,y)[1],Flux.params(ltc),data(200),ADAM(0.02); cb = ()->cbf(data_x,data_y,ltc))
-
-
-

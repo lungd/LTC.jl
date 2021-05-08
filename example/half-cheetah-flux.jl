@@ -4,8 +4,8 @@ gr()
 using BenchmarkTools
 using DiffEqSensitivity
 using OrdinaryDiffEq
-#using DiffEqFlux
-#using GalacticOptim
+using DiffEqFlux
+using GalacticOptim
 
 include("half_cheetah_data_loader.jl")
 
@@ -39,7 +39,7 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   function lg(p,x,y)
 	m = model
 	Flux.reset!(m)
-	ŷ = m.(x,[p])
+	ŷ = map(xi -> m(xi,p), x)
     sum(sum([(ŷ[i] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y), ŷ
   end
   cbg = function (p,l,pred;doplot=false) #callback function to observe training
@@ -54,22 +54,27 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   end
 
   train_dl, test_dl, valid_dl = get_dl(batchsize=32, seq_len=32)
-  ncp = LTC.LTCNet(NCPWiring(17,17,
-          n_sensory=4, n_inter=4, n_command=8, n_motor=2,
+  ncp = LTC.LTCNet(NCPWiring(17,2,
+          n_sensory=4, n_inter=4, n_command=7, n_motor=2,
           sensory_in=-1, rec_sensory=0, sensory_inter=2, sensory_command=0, sensory_motor=0,
           inter_in=2, rec_inter=2, inter_command=3, inter_motor=1,                       # inter_in = sensory_out
           command_in=0, rec_command=4, command_motor=2,                   # command_in = inter_out
           motor_in=0, rec_motor=3), solver, sensealg)
   model1 = ncp
-  #model2 = DiffEqFlux.FastDense(2,17)
-  #model = DiffEqFlux.FastChain(model1, model2)
-  model2 = Dense(2,17)
-  model = Chain(model1, x -> x[end-1:end, :], model2)
-  #model = model1
-  # model = Chain(ncp, x -> x[end-16:end, :])
+  model = ncp
+
+  model2 = DiffEqFlux.FastDense(2,17)
+  #model = (x,p) -> model1(x,p)[end-16:end, :]
+  model = DiffEqFlux.FastChain(model1, (x,p) -> x[end-1:end,:], model2)
+  # model2 = Dense(2,17)
+  # model = Chain(model1, x -> x[end-1:end, :], model2)
+  # model = model1
+  # model = DiffEqFlux.FastChain(ncp,(x,p) -> x[end-1:end, :],DiffEqFlux.FastDense(2,17))
   #θ = Flux.params(model1,model2)
-  θ = Flux.params(model)
-  @show sum(length.(θ))
+  # θ = Flux.params(model)
+  # @show sum(length.(θ))
+  pp = initial_params(model)
+  @show length(pp)
   # pp = DiffEqFlux.initial_params(model)
   #lower,upper = get_bounds(model)
   lower,upper = [],[]
@@ -93,16 +98,16 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   # model.(first(train_dl)[1])
   # model.(first(train_dl)[1])
 
-  opt = Flux.Optimiser(ClipValue(0.5), ADAM(0.3))
+  opt = Flux.Optimiser(ClipValue(0.5), ADAM(0.05))
 
-  # optfun = OptimizationFunction((θ, p, x, y) -> lg(θ,x,y), GalacticOptim.AutoZygote())
-  # optprob = OptimizationProblem(optfun, pp, lb=lower, ub=upper)
-  # #using IterTools: ncycle
-  # res1 = GalacticOptim.solve(optprob, opt, train_dl, cb = cbg, maxiters = n)
+  optfun = OptimizationFunction((θ, p, x, y) -> lg(θ,x,y), GalacticOptim.AutoZygote())
+  optprob = OptimizationProblem(optfun, pp)
+  #using IterTools: ncycle
+  res1 = GalacticOptim.solve(optprob, opt, train_dl, cb = cbg, maxiters = n)
   # return res1
 
   #my_custom_train!(model, (x,y) -> loss(x,y,model), θ, train_dl, opt; cb, lower, upper)
-  Flux.@epochs n my_custom_train!(model, (x,y) -> loss(x,y,model), θ, train_dl, opt; cb, lower, upper)
+  # Flux.@epochs n my_custom_train!(model, (x,y) -> loss(x,y,model), θ, train_dl, opt; cb, lower, upper)
 end
 
 

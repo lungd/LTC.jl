@@ -1,89 +1,152 @@
 abstract type Component end
 abstract type CurrentComponent <:Component end
 
-struct Mapper{V<:AbstractVector}
+struct Mapper{V,F<:Function}
   W::V
   b::V
-  Mapper(W::V,b::V) where {V<:AbstractVector} = new{typeof(W)}(W,b)
+  initial_params::F
+  paramlength::Int
 end
-Mapper(in::Integer) = Mapper(ones(Float32,in), zeros(Float32,in))
-function (m::Mapper{<:Vector{T}})(x::AbstractVecOrMat{T}) where T
-  W,b = m.W, m.b
+function Mapper(in::Integer)
+  W = ones(Float32,in)
+  b = zeros(Float32,in)
+  p = vcat(W,b)
+  initial_params() = p
+  Mapper(W, b, initial_params, length(p))
+end
+
+function (m::Mapper{<:Vector{T}})(x::AbstractVecOrMat{T}, p) where T
+  Wl = length(m.W)
+  W = @view p[1 : Wl]
+  b = @view p[Wl + 1 : end]
   W .* x .+ b
 end
-Flux.@functor Mapper
-Flux.trainable(m::Mapper) = (m.W, m.b,)
 Base.show(io::IO, m::Mapper) = print(io, "Mapper(", length(m.W), ")")
 
+initial_params(m::Mapper) = m.initial_params()
+paramlength(m::Mapper) = m.paramlength
 
 import Base: +, -
 struct ZeroSynapse <: CurrentComponent end
 ZeroSynapse(args...) = ZeroSynapse()
-(m::ZeroSynapse)(h,x) = fill(Flux.Zeros(), size(x,1))#zeros(eltype(x),size(x,1))#Flux.Zeros()#zeros(I,size(h,2))
-Flux.@functor ZeroSynapse
-Flux.trainable(m::ZeroSynapse) = Float32[]
-+(::Flux.Zeros, b::Real) = b
-+(a::Real, ::Flux.Zeros) = a
+(m::ZeroSynapse)(h,x,p=nothing) = zeros(eltype(x),size(x,1))#fill(Zeros(), size(x,1))##Flux.Zeros()#zeros(I,size(h,2))
++(::Zeros, b::Real) = b
++(a::Real, ::Zeros) = a
+-(::Zeros, b::Real) = -b
+-(a::Real, ::Zeros) = -a
+initial_params(m::ZeroSynapse) = Float32[]
+paramlength(m::ZeroSynapse) = 0
 
--(::Flux.Zeros, b::Real) = -b
--(a::Real, ::Flux.Zeros) = -a
-
-
-struct SigmoidSynapse{V} <: CurrentComponent
+struct SigmoidSynapse{V,F<:Function} <: CurrentComponent
   μ::V
   σ::V
   G::V
   E::V
+  initial_params::F
 end
 function SigmoidSynapse(;
              μr=Float32.((0.3, 0.8)), σr=Float32.((3, 8)), Gr=Float32.((0.001, 1)), Er=Float32.((-0.3, 0.3)))
-  μ = rand_uniform(eltype(μr),μr..., 1, 1)[1,:]
-  σ = rand_uniform(eltype(σr),σr..., 1, 1)[1,:]
-  G = rand_uniform(eltype(Gr),Gr..., 1, 1)[1,:]
-  E = rand_uniform(eltype(Er),Er..., 1, 1)[1,:]
-  SigmoidSynapse(μ,σ,G,E)
+  μ = rand_uniform(eltype(μr),μr..., 1, 1)[1]#[1,:]
+  σ = rand_uniform(eltype(σr),σr..., 1, 1)[1]#[1,:]
+  G = rand_uniform(eltype(Gr),Gr..., 1, 1)[1]#[1,:]
+  E = rand_uniform(eltype(Er),Er..., 1, 1)[1]#[1,:]
+  p = vcat(μ,σ,G,E)
+  initial_params() = p
+  SigmoidSynapse(μ,σ,G,E,initial_params)
 end
-function (m::SigmoidSynapse{V})(h::AbstractVecOrMat, x::AbstractVecOrMat{T}) where {V,T}
-  #@show size(@fastmath @. m.G * sigmoid((x - m.μ) * m.σ) * (h - m.E))    
-  @fastmath @. m.G * sigmoid((x - m.μ) * m.σ) * (h - m.E)
+function (m::SigmoidSynapse{V})(h::AbstractVecOrMat, x::AbstractVecOrMat{T}, p) where {V,T}
+  μ, σ, G, E = p
+  @. G * sigmoid((x - μ) * σ) * (h - E)
 end
-Flux.@functor SigmoidSynapse
-Flux.trainable(m::SigmoidSynapse) = (m.μ, m.σ, m.G, m.E,)
+
 Base.show(io::IO, m::SigmoidSynapse) = print(io, "SigmoidSynapse")
+initial_params(m::SigmoidSynapse) = m.initial_params()
+paramlength(m::SigmoidSynapse) = 4
 
-
-struct LeakChannel{V} <: CurrentComponent
+struct LeakChannel{V,F<:Function} <: CurrentComponent
   G::V
   E::V
+  initial_params::F
+  paramlength::Int
 end
-LeakChannel(n::Int; Gr=Float32.((0.001,1)), Er=Float32.((-0.3,0.3))) =
-  LeakChannel(rand_uniform(eltype(Gr),Gr..., n), rand_uniform(eltype(Er),Er..., n))
-(m::LeakChannel{V})(h::AbstractVecOrMat{T}) where {V,T} = @fastmath m.G .* (h .- m.E)
-Flux.@functor LeakChannel
-Flux.trainable(m::LeakChannel) = (m.G, m.E,)
+function LeakChannel(n::Int; Gr=Float32.((0.001,1)), Er=Float32.((-0.3,0.3)))
+  G = rand_uniform(eltype(Gr),Gr..., n)
+  E = rand_uniform(eltype(Er),Er..., n)
+  p = vcat(G,E)
+  initial_params() = p
+  LeakChannel(G, E, initial_params, length(p))
+end
+function (m::LeakChannel{V})(h::AbstractVecOrMat{T}, p) where {V,T}
+  Gl = Int(size(p,1) / 2)
+  G = @view p[1:Gl]
+  E = @view p[Gl+1:end]
+  @. G * (h - E)
+end
 Base.show(io::IO, m::LeakChannel) = print(io, "LeakChannel(", size(m.G,1), ")")
+initial_params(m::LeakChannel) = m.initial_params()
+paramlength(m::LeakChannel) = m.paramlength
 
 
-struct ComponentContainer{C}
-   components::C
- end
-(m::ComponentContainer{C})(x::AbstractVecOrMat, I::AbstractVecOrMat) where C = doComponentContainer(m.components, x, I)
-doComponentContainer(components, x, I) = reshape(mapreduce(dst -> mapreduce(src -> components[src,dst](x[dst,:],I[src,:]), +, 1:size(I,1)), vcat, 1:size(x,1)), size(x))
-Flux.@functor ComponentContainer
+struct ComponentContainer{C,F<:Function}
+  components::C
+  initial_params::F
+  paramlength::Int
+end
+function ComponentContainer(components)
+  p = reduce(vcat, DiffEqFlux.initial_params.(components))
+  initial_params() = p
+  ComponentContainer(components, initial_params, length(p))
+end
+# (m::ComponentContainer{C})(x::AbstractVecOrMat, I::AbstractVecOrMat) where C = doComponentContainer(m.components, x, I)
+# doComponentContainer(components, x, I) = reshape(mapreduce(dst -> mapreduce(src -> components[src,dst](x[dst,:],I[src,:]), +, 1:size(I,1)), vcat, 1:size(x,1)), size(x))
+# Flux.@functor ComponentContainer
+function (m::ComponentContainer{C})(x::AbstractVecOrMat, I::AbstractVecOrMat, p) where C
+  out = Zygote.Buffer(x, size(x,1), size(x,2))
+  for i in eachindex(out)
+    out[i] = 0
+  end
+  comps = m.components
+  i = 1
+  @inbounds for dst in 1:size(x,1)
+
+    buf = Zygote.Buffer(x, size(comps,1), size(x,2))
+    for j in eachindex(buf)
+      buf[j] = 0
+    end
+
+    for src in 1:size(comps,1)
+      c = comps[src,dst]
+      cpl = paramlength(c)
+      p_comp = @view p[i:i-1+cpl]
+      c_out = c(x[dst,:],I[src,:],p_comp)
+      buf[src,:] = c_out
+      i = i + cpl
+    end
+
+    bb = copy(buf)
+    out[dst,:] = sum(bb,dims=1)
+  end
+  return copy(out)
+end
+
+initial_params(m::ComponentContainer) = m.initial_params()
+paramlength(m::ComponentContainer) = m.paramlength
 
 
-struct LTCCell{W<:Wiring,SE<:ComponentContainer,SY<:ComponentContainer,LE<:LeakChannel,CC<:Flux.Parallel,CCP<:AbstractArray,CCRE<:Function,V<:AbstractArray,S<:AbstractMatrix,SOLVER,SENSEALG}
+struct LTCCell{W<:Wiring,SE<:ComponentContainer,SY<:ComponentContainer,LE<:LeakChannel,V<:AbstractArray,S<:AbstractMatrix,SOLVER,SENSEALG,F<:Function}
   wiring::W
   sens::SE
   syns::SY
   leaks::LE
-  cc::CC
-  cc_p::CCP
-  cc_re::CCRE
+  # cc::CC
+  # cc_p::CCP
+  # cc_re::CCRE
   cm::V
   state0::S
   solver::SOLVER
   sensealg::SENSEALG
+  initial_params::F
+  paramlength::Int
 end
 
 
@@ -119,48 +182,49 @@ function LTCCell(wiring, solver, sensealg; cmr=Float32.((1.6,2.5)), state0r=Floa
   sens = reshape(sens, size(wiring.sens_mask))
   syns = reshape(syns, size(wiring.syn_mask))
 
-  # sens = StructArray(sens)
-  # syns = StructArray(syns)
+  #sens = StructArray(sens)
+  #syns = StructArray(syns)
 
   sensc = ComponentContainer(sens)
   synsc = ComponentContainer(syns)
   leaks = LeakChannel(n_total)
 
-  cc = Flux.Parallel(+, sensc, synsc, leaks)
-  cc_p, cc_re = Flux.destructure(cc)
+  # cc = Flux.Parallel(+, sensc, synsc, leaks)
+  # cc_p, cc_re = Flux.destructure(cc)
 
-  LTCCell(wiring, sensc, synsc, leaks, cc, cc_p, cc_re, cm, state0, solver, sensealg)
+  #p = vcat(DiffEqFlux.initial_params(sensc),DiffEqFlux.initial_params(synsc),DiffEqFlux.initial_params(leaks),cm,vec(state0))
+  p = vcat(DiffEqFlux.initial_params(sensc),DiffEqFlux.initial_params(synsc),DiffEqFlux.initial_params(leaks),cm)
+  initial_params() = p
+
+  LTCCell(wiring, sensc, synsc, leaks, cm, state0, solver, sensealg, initial_params, length(p))
 end
-Flux.@functor LTCCell
-Flux.trainable(m::LTCCell) = (m.cc_p, m.cm, m.state0,)
+# Flux.@functor LTCCell
+# Flux.trainable(m::LTCCell) = (m.cc_p, m.cm, m.state0,)
 Base.show(io::IO, m::LTCCell) = print(io, "LTCCell(", m.wiring.n_sensory, ",", m.wiring.n_inter, ",", m.wiring.n_command, ",", m.wiring.n_motor, ")")
-# TODO remove in v0.13
-function Base.getproperty(m::LTCCell, sym::Symbol)
-  if sym === :h
-    Zygote.ignore() do
-      @warn "LTCCell field :h has been deprecated. Use m::LTCCell.state0 instead."
-    end
-    return getfield(m, :state0)
-  else
-    return getfield(m, sym)
-  end
-end
+initial_params(m::LTCCell) = m.initial_params()
+paramlength(m::LTCCell) = m.paramlength
 
-function (m::LTCCell{W,SE,SY,LE,CC,CCP,CCRE,V,<:AbstractMatrix{T},SOLVER,SENSEALG})(h::AbstractVecOrMat{T}, x::AbstractVecOrMat{T}) where {W,SE,SY,LE,CC,CCP,CCRE,V,T,SOLVER,SENSEALG}
-  h = repeat(h, 1, size(x,2)-size(h,2)+1)::Matrix{T}
-  h = solve_ode(m,h,x)
+#function (m::LTCCell{W,SE,SY,LE,CC,CCP,CCRE,V,<:AbstractMatrix{T},SOLVER,SENSEALG})(h::AbstractVecOrMat{T}, x::AbstractVecOrMat{T}, p) where {W,SE,SY,LE,CC,CCP,CCRE,V,T,SOLVER,SENSEALG}
+function (m::LTCCell)(h::AbstractVecOrMat, x::AbstractVecOrMat, p)
+  h = repeat(h, 1, size(x,2)-size(h,2)+1)
+  # p_ode = @view p[1:end-length(m.state0)]
+  p_ode = p
+  h = solve_ode(m,h,x, p_ode)
   h, h
 end
-function solve_ode(m,h::Matrix{T},x::Matrix)::Matrix{Float32} where T
+
+function solve_ode(m,h,x,p)#::Matrix{Float32} where T
 
   function dltcdt!(dh,h,p,t)
-    cc_p = @view p[1 : cc_p_l]
-    cm   = @view p[cc_p_l+1 : pl]
-    cc = cc_re(cc_p)
-    
-    argsv = ((h,x), (h,h), (h,))
-
-    I_components = mapreduce(i -> cc.layers[i](argsv[i]...), cc.connection, 1:length(cc.layers))
+    #cc_p = @view p[1 : cc_p_l]
+    sens_p  = @view p[1 : sens_pl]
+    syns_p  = @view p[sens_pl + 1 : sens_pl + syns_pl]
+    leaks_p = @view p[sens_pl + syns_pl + 1 : sens_pl + syns_pl + leaks_pl]
+    cm      = @view p[sens_pl + syns_pl + leaks_pl + 1 : end]
+    #cc = cc_re(cc_p)
+    #argsv = ((h,x), (h,h), (h,h))
+    #I_components = mapreduce(i -> cc.layers[i](argsv[i][1],argsv[i][2]), cc.connection, 1:length(cc.layers))
+    I_components = m.sens(h,x,sens_p) .+ m.syns(h,h,syns_p) .+ m.leaks(h,leaks_p)
     @. dh = - cm * I_components
     nothing
   end
@@ -169,14 +233,13 @@ function solve_ode(m,h::Matrix{T},x::Matrix)::Matrix{Float32} where T
     dltcdt!(dh,h,p,t)
     dh
   end
-  
-  cc_p_l = size(m.cc_p,1)::Int
-  cc_re = m.cc_re
 
-  p = vcat(m.cc_p, m.cm)::Vector{Float32}
-  pl = size(p,1)::Int
+  sens_pl = paramlength(m.sens)
+  syns_pl = paramlength(m.syns)
+  leaks_pl = paramlength(m.leaks)
+
   prob = ODEProblem{true}(dltcdt!,h,Float32.((0,1)),p)
-  # prob = ODEProblem{false}(oop,h,tspan,p)
+  # prob = ODEProblem{false}(oop,h,Float32.((0,1)),p)
 
   # de = ModelingToolkit.modelingtoolkitize(prob)
   # jac = eval(ModelingToolkit.generate_jacobian(de)[2])
@@ -188,47 +251,51 @@ end
 
 
 
-
-mutable struct LTCNet{MI<:Mapper,MO<:Mapper,T<:LTCCell,S}
+mutable struct LTCNet{MI<:Mapper,MO<:Mapper,T<:LTCCell,S,F<:Function}
   mapin::MI
   mapout::MO
   cell::T
   state::S
-  LTCNet(mapin,mapout,cell,state) = new{typeof(mapin),typeof(mapout),typeof(cell),typeof(state)}(mapin,mapout,cell,state)
+  initial_params::F
+  paramlength::Int
+  #LTCNet(mapin,mapout,cell,state) = new{typeof(mapin),typeof(mapout),typeof(cell),typeof(state)}(mapin,mapout,cell,state)
 end
 function LTCNet(wiring,solver,sensealg)
   mapin = Mapper(wiring.n_in)
   mapout = Mapper(wiring.n_total)
   cell = LTCCell(wiring,solver,sensealg)
-  LTCNet(mapin,mapout,cell,cell.state0)
+
+  p = vcat(DiffEqFlux.initial_params(mapin), DiffEqFlux.initial_params(cell), DiffEqFlux.initial_params(mapout))
+  initial_params() = p
+
+  LTCNet(mapin,mapout,cell,cell.state0,initial_params,length(p))
 end
 
-function (m::LTCNet{MI,MO,T,<:AbstractMatrix{T2}})(x::AbstractVecOrMat{T2}) where {MI,MO,T,T2}
-  x1 = m.mapin(x)
-  m.state, y1 = m.cell(m.state, x1)
-  y = m.mapout(y1)
-  return y
+
+function (m::LTCNet{MI,MO,T,<:AbstractMatrix{T2}})(x::AbstractVecOrMat{T2}, p) where {MI,MO,T,T2}
+  mapin_pl = paramlength(m.mapin)
+  cell_pl = paramlength(m.cell)
+  mapout_pl = paramlength(m.mapout)
+  p_mapin  = @view p[1 : mapin_pl]
+  p_cell   = @view p[mapin_pl + 1 : mapin_pl + cell_pl]
+  p_mapout = @view p[mapin_pl + cell_pl + 1 : mapin_pl + cell_pl + mapout_pl]
+
+  x = m.mapin(x, p_mapin)
+  m.state, y = m.cell(m.state, x, p_cell)
+  m.mapout(y, p_mapout)
 end
 
-Flux.@functor LTCNet
-Flux.trainable(m::LTCNet) = (m.mapin, m.mapout, m.cell,)
-Flux.reset!(m::LTCNet) = (m.state = m.cell.state0)
+reset!(m::LTCNet) = (m.state = m.cell.state0)
+reset_state!(m::LTCNet, p) = (m.state = reshape(p[end-length(m.cell.state0)+1:end],:,1))
+
+initial_params(m::LTCNet) = m.initial_params()
+paramlength(m::LTCNet) = m.paramlength
+
 Base.show(io::IO, m::LTCNet) = print(io, "LTCNet(", m.mapin, ",", m.mapout, ",", m.cell, ")")
-function Base.getproperty(m::LTCNet, sym::Symbol)
-  if sym === :init
-    Zygote.ignore() do
-      @warn "LTCNet field :init has been deprecated. To access initial state weights, use m::LTCNet.cell.state0 instead."
-    end
-    return getfield(m.cell, :state0)
-  else
-    return getfield(m, sym)
-  end
-end
 
 
 
-
-function get_bouds(m::LeakChannel)
+function get_bounds(m::LeakChannel)
 end
 function get_bounds(m::SigmoidSynapse)
   [0.1, 1, 0.001, -1] |> f32, [0.9, 10, 1, 1] |> f32
@@ -264,4 +331,3 @@ function get_bounds(m::LTCNet)
 
   lower, upper
 end
-

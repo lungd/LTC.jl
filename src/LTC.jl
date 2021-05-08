@@ -11,13 +11,16 @@ using LoopVectorization
 using StructArrays
 using MacroTools: @forward
 
-using Flux
+#using Flux
+
 using DiffEqBase
 using OrdinaryDiffEq
 using DiffEqSensitivity
-#using DiffEqFlux
-#import DiffEqFlux: initial_params, paramlength, FastChain, FastDense
-#using GalacticOptim
+using DiffEqFlux
+using DiffEqFlux: initial_params, paramlength, FastChain, FastDense, sciml_train
+import DiffEqFlux: initial_params, paramlength, FastChain, FastDense, sciml_train
+export sciml_train
+using GalacticOptim
 #export initial_params
 #using DiffRules
 #using RecursiveArrayTools
@@ -35,6 +38,10 @@ using DiffEqSensitivity
 using Tullio
 using Zygote
 using Zygote: @adjoint, Numeric, literal_getproperty, accum
+export Zygote
+using Flux: reset!, Zeros
+import Flux: reset!
+#export reset!
 # using ReverseDiff
 using ForwardDiff
 
@@ -45,8 +52,6 @@ using ForwardDiff
 
 
 #@reexport using Statistics
-
-export Flux
 
 
 rand_uniform(TYPE, lb,ub,dims...) = TYPE.(rand(Uniform(lb,ub),dims...))# |> f64
@@ -71,7 +76,6 @@ export get_bounds
 
 export Wiring, NCPWiring
 export LTCNet, Mapper, gNN, get_bounds, my_custom_train!
-
-
+export reset!, reset_state!
+export initial_params, paramlength
 end
-
