@@ -15,7 +15,7 @@ function Mapper(in::Integer)
   Mapper(W, b, initial_params, length(p))
 end
 
-function (m::Mapper{<:Vector{T}})(x::AbstractVecOrMat{T}, p) where T
+function (m::Mapper)(x::AbstractVecOrMat, p) where T
   Wl = length(m.W)
   W = @view p[1 : Wl]
   b = @view p[Wl + 1 : end]
@@ -82,6 +82,14 @@ function (m::LeakChannel{V})(h::AbstractVecOrMat{T}, p) where {V,T}
   E = @view p[Gl+1:end]
   @. G * (h - E)
 end
+function (m::LeakChannel{V})(h::AbstractVecOrMat{T}, p, out) where {V,T}
+  Gl = Int(size(p,1) / 2)
+  G = @view p[1:Gl]
+  E = @view p[Gl+1:end]
+  for n in 1:size(h,1)
+    out[n,:] += G[n] .* (h[n,:] .- E[n])
+  end
+end
 Base.show(io::IO, m::LeakChannel) = print(io, "LeakChannel(", size(m.G,1), ")")
 initial_params(m::LeakChannel) = m.initial_params()
 paramlength(m::LeakChannel) = m.paramlength
@@ -107,7 +115,7 @@ function (m::ComponentContainer{C})(x::AbstractVecOrMat, I::AbstractVecOrMat, p)
   end
   comps = m.components
   i = 1
-  @inbounds for dst in 1:size(x,1)
+  for dst in 1:size(x,1)
 
     buf = Zygote.Buffer(x, size(comps,1), size(x,2))
     for j in eachindex(buf)
@@ -124,10 +132,46 @@ function (m::ComponentContainer{C})(x::AbstractVecOrMat, I::AbstractVecOrMat, p)
     end
 
     bb = copy(buf)
-    out[dst,:] = sum(bb,dims=1)
+    @avxt out[dst,:] += reshape(sum(bb,dims=1),:)
   end
   return copy(out)
 end
+
+
+
+
+
+
+function (m::ComponentContainer{C})(x::AbstractVecOrMat, I::AbstractVecOrMat, p, out) where C
+  # out = Zygote.Buffer(x, size(x,1), size(x,2))
+  # for i in eachindex(out)
+  #   out[i] = 0
+  # end
+  comps = m.components
+  i = 1
+  for dst in 1:size(x,1)
+
+    buf = Zygote.Buffer(x, size(comps,1), size(x,2))
+    for j in eachindex(buf)
+      buf[j] = 0
+    end
+
+    for src in 1:size(comps,1)
+      c = comps[src,dst]
+      cpl = paramlength(c)
+      p_comp = @view p[i:i-1+cpl]
+      c_out = c(x[dst,:],I[src,:],p_comp)
+      buf[src,:] = c_out
+      i = i + cpl
+    end
+
+    bb = copy(buf)
+    out[dst,:] += reshape(sum(bb,dims=1), :)
+  end
+  #return copy(out)
+end
+
+
 
 initial_params(m::ComponentContainer) = m.initial_params()
 paramlength(m::ComponentContainer) = m.paramlength
@@ -198,13 +242,10 @@ function LTCCell(wiring, solver, sensealg; cmr=Float32.((1.6,2.5)), state0r=Floa
 
   LTCCell(wiring, sensc, synsc, leaks, cm, state0, solver, sensealg, initial_params, length(p))
 end
-# Flux.@functor LTCCell
-# Flux.trainable(m::LTCCell) = (m.cc_p, m.cm, m.state0,)
 Base.show(io::IO, m::LTCCell) = print(io, "LTCCell(", m.wiring.n_sensory, ",", m.wiring.n_inter, ",", m.wiring.n_command, ",", m.wiring.n_motor, ")")
 initial_params(m::LTCCell) = m.initial_params()
 paramlength(m::LTCCell) = m.paramlength
 
-#function (m::LTCCell{W,SE,SY,LE,CC,CCP,CCRE,V,<:AbstractMatrix{T},SOLVER,SENSEALG})(h::AbstractVecOrMat{T}, x::AbstractVecOrMat{T}, p) where {W,SE,SY,LE,CC,CCP,CCRE,V,T,SOLVER,SENSEALG}
 function (m::LTCCell)(h::AbstractVecOrMat, x::AbstractVecOrMat, p)
   h = repeat(h, 1, size(x,2)-size(h,2)+1)
   # p_ode = @view p[1:end-length(m.state0)]
@@ -224,6 +265,16 @@ function solve_ode(m,h,x,p)#::Matrix{Float32} where T
     #cc = cc_re(cc_p)
     #argsv = ((h,x), (h,h), (h,h))
     #I_components = mapreduce(i -> cc.layers[i](argsv[i][1],argsv[i][2]), cc.connection, 1:length(cc.layers))
+
+    # out = Zygote.Buffer(h, size(h,1), size(h,2))
+    # for i in eachindex(out)
+    #   out[i] = 0
+    # end
+    # m.sens(h, x, sens_p, out)
+    # m.syns(h, h, syns_p, out)
+    # m.leaks(h, leaks_p, out)
+    # I_components = copy(out)
+
     I_components = m.sens(h,x,sens_p) .+ m.syns(h,h,syns_p) .+ m.leaks(h,leaks_p)
     @. dh = - cm * I_components
     nothing
@@ -246,7 +297,7 @@ function solve_ode(m,h,x,p)#::Matrix{Float32} where T
   # f = ODEFunction((dh,h,p,t)->dltcdt!(dh,h,p,t,x,cc_p_l), jac=jac)
   # prob_jac = ODEProblem(f,h,tspan,p)
 
-  solve(prob,m.solver; sensealg=m.sensealg, save_everystep=false, save_start=false, abstol=1e-3, reltol=1e-3)[:,:,end]
+  solve(prob,m.solver; sensealg=m.sensealg, save_everystep=false, save_start=false, abstol=1e-2, reltol=1e-2)[:,:,end]
 end
 
 

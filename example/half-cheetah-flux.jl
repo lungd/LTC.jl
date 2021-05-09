@@ -40,15 +40,19 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
 	m = model
 	Flux.reset!(m)
 	ŷ = map(xi -> m(xi,p), x)
-    sum(sum([(ŷ[i] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y), ŷ
+    sum(sum([(ŷ[i] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y), ŷ, y
   end
-  cbg = function (p,l,pred;doplot=false) #callback function to observe training
+  cbg = function (p,l,pred,y;doplot=true) #callback function to observe training
    display(l)
     # plot current prediction against data
     if doplot
-  	  pl = scatter(first(train_dl)[1],label="data")
-	  scatter!(pl,pred[1,:],label="prediction")
-	  display(plot(pl))
+  	  # pl = scatter(first(train_dl)[1],label="data")
+	  # scatter!(pl,pred[1,:],label="prediction")
+	  # display(plot(pl))
+
+	  fig = plot([ŷ[end,1] for ŷ in pred])
+	  plot!(fig, [yi[end,1] for yi in y])
+	  display(fig)
 	end
 	return false
   end
@@ -98,12 +102,12 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   # model.(first(train_dl)[1])
   # model.(first(train_dl)[1])
 
-  opt = Flux.Optimiser(ClipValue(0.5), ADAM(0.05))
+  opt = Flux.Optimiser(ClipValue(0.5), ADAM(0.01))
 
   optfun = OptimizationFunction((θ, p, x, y) -> lg(θ,x,y), GalacticOptim.AutoZygote())
   optprob = OptimizationProblem(optfun, pp)
   #using IterTools: ncycle
-  res1 = GalacticOptim.solve(optprob, opt, train_dl, cb = cbg, maxiters = n)
+  res1 = GalacticOptim.solve(optprob, opt, ncycle(train_dl,n), cb = cbg, maxiters = n)
   # return res1
 
   #my_custom_train!(model, (x,y) -> loss(x,y,model), θ, train_dl, opt; cb, lower, upper)
@@ -111,35 +115,32 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
 end
 
 
-# @time traintest(1, VCABM(), ZygoteAdjoint())
-
-
 @time traintest(10)
 
-@time traintest(10, VCABM(), ForwardDiffSensitivity())
-@time traintest(10, VCABM(), ReverseDiffAdjoint())
-@time traintest(10, VCABM(), QuadratureAdjoint(autojacvec=ReverseDiffVJP(true)))
-# 192.343950 seconds (206.01 M allocations: 64.016 GiB, 4.65% gc time, 22.36% compilation time)
-# 138.803175 seconds (159.75 M allocations: 51.048 GiB, 5.04% gc time)
-# 89.533896 seconds (346.13 M allocations: 138.572 GiB, 23.55% gc time)
-@time traintest(10, AutoTsit5(Rosenbrock23()), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
-
-
-@time traintest(1, VCABM(), InterpolatingAdjoint(checkpointing=true, autojacvec=ZygoteVJP()))
-@time traintest(1, VCABM(), TrackerAdjoint())
-@time traintest(1, VCABM(), InterpolatingAdjoint(autojacvec=ZygoteVJP()))
-@time traintest(1, VCABM(), QuadratureAdjoint(compile=true, abstol=1e-3,reltol=1e-3, autojacvec=ZygoteVJP()))
-@time traintest(1, VCABM(), QuadratureAdjoint(compile=true, abstol=1e-3,reltol=1e-3, autojacvec=ReverseDiffVJP(true)))
-@time traintest(1, Tsit5(), ZygoteAdjoint())
-# 142.623700 seconds (1.43 G allocations: 380.410 GiB, 45.09% gc time, 0.02% compilation time)
-
-@time traintest(1, VCABM(), ReverseDiffAdjoint())
-@time traintest(1, CVODE_BDF(linear_solver=:GMRES), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
-@time traintest(1, VCABM(), InterpolatingAdjoint(checkpointing=true, autojacvec=ReverseDiffVJP(true)))
-# 161.160516 seconds (985.58 M allocations: 201.055 GiB, 22.29% gc time, 9.22% compilation time)
-
-#@time traintest(3, VCABM(), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
-
+# @time traintest(10, VCABM(), ForwardDiffSensitivity())
+# @time traintest(10, VCABM(), ReverseDiffAdjoint())
+# @time traintest(10, VCABM(), QuadratureAdjoint(autojacvec=ReverseDiffVJP(true)))
+# # 192.343950 seconds (206.01 M allocations: 64.016 GiB, 4.65% gc time, 22.36% compilation time)
+# # 138.803175 seconds (159.75 M allocations: 51.048 GiB, 5.04% gc time)
+# # 89.533896 seconds (346.13 M allocations: 138.572 GiB, 23.55% gc time)
+# @time traintest(10, AutoTsit5(Rosenbrock23()), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
+#
+#
+# @time traintest(1, VCABM(), InterpolatingAdjoint(checkpointing=true, autojacvec=ZygoteVJP()))
+# @time traintest(1, VCABM(), TrackerAdjoint())
+# @time traintest(1, VCABM(), InterpolatingAdjoint(autojacvec=ZygoteVJP()))
+# @time traintest(1, VCABM(), QuadratureAdjoint(compile=true, abstol=1e-3,reltol=1e-3, autojacvec=ZygoteVJP()))
+# @time traintest(1, VCABM(), QuadratureAdjoint(compile=true, abstol=1e-3,reltol=1e-3, autojacvec=ReverseDiffVJP(true)))
+# @time traintest(1, Tsit5(), ZygoteAdjoint())
+# # 142.623700 seconds (1.43 G allocations: 380.410 GiB, 45.09% gc time, 0.02% compilation time)
+#
+# @time traintest(1, VCABM(), ReverseDiffAdjoint())
+# @time traintest(1, CVODE_BDF(linear_solver=:GMRES), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
+# @time traintest(1, VCABM(), InterpolatingAdjoint(checkpointing=true, autojacvec=ReverseDiffVJP(true)))
+# # 161.160516 seconds (985.58 M allocations: 201.055 GiB, 22.29% gc time, 9.22% compilation time)
+#
+# #@time traintest(3, VCABM(), InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
+#
 
 
 

@@ -22,25 +22,29 @@ function generate_data()
     #data_x = [repeat(x,1,20) for x in data_x]
     #data_y = [repeat(x,1,20) for x in data_y]
 
-    data_x, data_y
+    # data_x, data_y
+    DataLoader((data_x, data_y), batchsize=N)
 end
 
 function data(iter; data_x=nothing, data_y=nothing, short=false, noisy=false)
     #noisy_data = Vector{Tuple{Vector{Matrix{Float64}}, Vector{Vector{Float64}}}}([])
-    if data_y === nothing
-      data_x, data_y = generate_data()
-    end
-    noisy_data = Vector{Tuple{Vector{Matrix{eltype(data_x[1])}}, Vector{Vector{eltype(data_y[1])}}}}([])
-    for i in 1:iter
-        x = data_x
-        y = data_y
-        if short isa Array
-          x = x[short[1]:short[2]]
-          y = y[short[1]:short[2]]
-        end
-        push!(noisy_data, (x , noisy ? add_gauss.(y,0.02) : y))
-    end
-    noisy_data
+    # if data_y === nothing
+    #   data_x, data_y = generate_data()
+    # end
+    # noisy_data = Vector{Tuple{Vector{Matrix{eltype(data_x[1])}}, Vector{Vector{eltype(data_y[1])}}}}([])
+    # for i in 1:iter
+    #     x = data_x
+    #     y = data_y
+    #     if short isa Array
+    #       x = x[short[1]:short[2]]
+    #       y = y[short[1]:short[2]]
+    #     end
+    #     push!(noisy_data, (x , noisy ? add_gauss.(y,0.02) : y))
+    # end
+    # noisy_data
+
+
+    ncycle(generate_data(), iter)
 end
 
 
@@ -68,30 +72,34 @@ end
 
 function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
 
+  anim = Animation()
+
   function lg(p,x,y,model)
     # reset_state!(model,p)
     reset!(model)
     # d = train_data[1]
     # x,y = d[1], d[2]
     m = model
-    ŷ = [m(xi,p)[end-m.cell.wiring.n_motor+1:end, :] for xi in x]
-    #ŷ = m.(x,[p])
+    #ŷ = [m(xi,p)[end-m.cell.wiring.n_motor+1:end, :] for xi in x]
+    # ŷ = m.(x,[p])
+    ŷ = map(xi -> m(xi,p), x)
     #losses = [Flux.Losses.mse(ŷ[i][end,:], y[i]) for i in 1:length(y)]
     #sum(losses)/length(losses), ŷ
-    sum(sum([(ŷ[i][end,:] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y), ŷ
+    sum(sum([(ŷ[i][end,:] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y), ŷ, y
   end
-  cbg = function (p,l,pred;doplot=false) #callback function to observe training
+  cbg = function (p,l,pred,y;doplot=true) #callback function to observe training
     display(l)
     # plot current prediction against data
     if doplot
       fig = plot([ŷ[end,1] for ŷ in pred])
       plot!(fig, [yi[end,1] for yi in y])
+      frame(anim)
       display(fig)
     end
     return false
   end
 
-  x,y = generate_data()
+  #train_dl = generate_data()
   model = LTC.LTCNet(Wiring(2,1), solver, sensealg)
   #pp, re = Flux.destructure(model)
   # pp = DiffEqFlux.initial_params(model)
@@ -107,7 +115,7 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   #@show sum(length.(θ))
   @show length(lower)
 
-  train_data = data(n)
+  train_dl = data(n)
 
   opt = GalacticOptim.Flux.Optimiser(ClipValue(0.5), ADAM(0.05))
 
@@ -160,7 +168,7 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   optprob = OptimizationProblem(optfun, pp)
   #using IterTools: ncycle
   #Juno.@profiler GalacticOptim.solve(optprob, opt, train_data, cb = cbg, maxiters = n) C = true
-  GalacticOptim.solve(optprob, opt, train_data, cb = cbg, maxiters = 1000)
+  GalacticOptim.solve(optprob, opt, train_dl, cb = cbg, maxiters = 1000)
 
 
 

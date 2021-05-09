@@ -39,12 +39,15 @@ using Tullio
 using Zygote
 using Zygote: @adjoint, Numeric, literal_getproperty, accum
 export Zygote
-using Flux: reset!, Zeros
+using Flux: reset!, Zeros, Data.DataLoader
+using Flux: Data.DataLoader
 import Flux: reset!
+export DataLoader
 #export reset!
 # using ReverseDiff
 using ForwardDiff
-
+using IterTools: ncycle
+export ncycle
 #using ZygoteRules
 #using ForwardDiff
 #using Sundials
