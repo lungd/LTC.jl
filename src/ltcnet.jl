@@ -132,7 +132,7 @@ function (m::ComponentContainer{C})(x::AbstractVecOrMat, I::AbstractVecOrMat, p)
     end
 
     bb = copy(buf)
-    @avxt out[dst,:] += reshape(sum(bb,dims=1),:)
+    out[dst,:] += reshape(sum(bb,dims=1),:)
   end
   return copy(out)
 end
@@ -236,8 +236,8 @@ function LTCCell(wiring, solver, sensealg; cmr=Float32.((1.6,2.5)), state0r=Floa
   # cc = Flux.Parallel(+, sensc, synsc, leaks)
   # cc_p, cc_re = Flux.destructure(cc)
 
-  #p = vcat(DiffEqFlux.initial_params(sensc),DiffEqFlux.initial_params(synsc),DiffEqFlux.initial_params(leaks),cm,vec(state0))
-  p = vcat(DiffEqFlux.initial_params(sensc),DiffEqFlux.initial_params(synsc),DiffEqFlux.initial_params(leaks),cm)
+  p = vcat(DiffEqFlux.initial_params(sensc),DiffEqFlux.initial_params(synsc),DiffEqFlux.initial_params(leaks),cm,vec(state0))
+  #p = vcat(DiffEqFlux.initial_params(sensc),DiffEqFlux.initial_params(synsc),DiffEqFlux.initial_params(leaks),cm)
   initial_params() = p
 
   LTCCell(wiring, sensc, synsc, leaks, cm, state0, solver, sensealg, initial_params, length(p))
@@ -248,8 +248,8 @@ paramlength(m::LTCCell) = m.paramlength
 
 function (m::LTCCell)(h::AbstractVecOrMat, x::AbstractVecOrMat, p)
   h = repeat(h, 1, size(x,2)-size(h,2)+1)
-  # p_ode = @view p[1:end-length(m.state0)]
-  p_ode = p
+  p_ode = @view p[1:end-length(m.state0)]
+  # p_ode = p
   h = solve_ode(m,h,x, p_ode)
   h, h
 end
@@ -338,6 +338,8 @@ end
 
 reset!(m::LTCNet) = (m.state = m.cell.state0)
 reset_state!(m::LTCNet, p) = (m.state = reshape(p[end-length(m.cell.state0)+1:end],:,1))
+reset_state!(m::DiffEqFlux.FastChain, p) = map(l -> reset_state!(l,p), m.layers)
+reset_state!(m,p) = nothing
 
 initial_params(m::LTCNet) = m.initial_params()
 paramlength(m::LTCNet) = m.paramlength
@@ -346,39 +348,85 @@ Base.show(io::IO, m::LTCNet) = print(io, "LTCNet(", m.mapin, ",", m.mapout, ",",
 
 
 
-function get_bounds(m::LeakChannel)
+get_bounds(m::Function) = Float32[],Float32[]
+get_bounds(m::Flux.Chain) = [reduce(vcat, [get_bounds(l)[1] for l in m.layers]), reduce(vcat, [get_bounds(l)[2] for l in m.layers])]
+function get_bounds(m::Flux.Dense)
+  lb = [[-20.0 for _ in 1:length(m.weight)]...,
+        [-20.0 for _ in 1:length(m.bias)]...] |> f32
+  ub = [[20.0 for _ in 1:length(m.weight)]...,
+        [20.0 for _ in 1:length(m.bias)]...] |> f32
+  return lb, ub
 end
-function get_bounds(m::SigmoidSynapse)
-  [0.1, 1, 0.001, -1] |> f32, [0.9, 10, 1, 1] |> f32
+
+function get_bounds(m::DiffEqFlux.FastChain)
+  lb = vcat([get_bounds(layer)[1] for layer in m.layers]...)
+  ub = vcat([get_bounds(layer)[2] for layer in m.layers]...)
+  return lb, ub
 end
+
+function get_bounds(m::DiffEqFlux.FastDense)
+  lb = [[-2.0 for _ in 1:m.out*m.in]...,
+        [-2.0 for _ in 1:m.out]...] |> f32
+  ub = [[2.0 for _ in 1:m.out*m.in]...,
+        [2.0 for _ in 1:m.out]...] |> f32
+  return lb, ub
+end
+
+get_bounds(m::ZeroSynapse) = Float32[], Float32[]
+
 function get_bounds(m::Mapper)
   lb = [[-20.1 for i in 1:length(m.W)]...,
         [-20.1 for i in 1:length(m.b)]...] |> f32
 
   ub = [[20.1 for i in 1:length(m.W)]...,
         [20.1 for i in 1:length(m.b)]...] |> f32
-  return lb, ub
+  lb, ub
+end
+function get_bounds(m::LTCCell)
+  lb = [
+    reduce(vcat,[get_bounds(s)[1] for s in m.sens.components])...,
+    reduce(vcat,[get_bounds(s)[1] for s in m.syns.components])...,
+    get_bounds(m.leaks)[1]...,
+    [1 for _ in 1:length(m.cm)]...,
+    [-20 for _ in 1:length(m.state0)]...,
+  ]
+  ub = [
+    reduce(vcat,[get_bounds(s)[2] for s in m.sens.components])...,
+    reduce(vcat,[get_bounds(s)[2] for s in m.syns.components])...,
+    get_bounds(m.leaks)[2]...,
+    [3 for _ in 1:length(m.cm)]...,
+    [20 for _ in 1:length(m.state0)]...,
+  ]
+  lb, ub
+end
+function get_bounds(m::LeakChannel)
+  lb = [
+    [0 for _ in 1:length(m.G)]...,
+    [-2 for _ in 1:length(m.E)]...,
+  ] |> f32
+  ub = [
+    [2 for _ in 1:length(m.G)]...,
+    [2 for _ in 1:length(m.E)]...,
+  ] |> f32
+  lb, ub
+end
+function get_bounds(m::SigmoidSynapse)
+  lb = [0.1, 1, 0.001, -1] |> f32
+  ub = [0.9, 10, 1, 1] |> f32
+  lb, ub
 end
 
-function get_bounds(m::LTCNet)
-  lower = [
-      get_bounds(m.mapin)[1]...,
-      get_bounds(m.mapout)[1]...,
-      reduce(vcat,[get_bounds(s)[1] for s in [m.cell.sens.components;m.cell.syns.components]])...,
-      [0.01 for _ in m.cell.state0]...,            #
-      [-2 for _ in m.cell.state0]...,
-      [0.001 for _ in m.cell.cm]...,
-      [-50 for _ in m.cell.state0]...,
-  ] |> f32
-  upper = [
-    get_bounds(m.mapin)[2]...,
-    get_bounds(m.mapout)[2]...,
-    reduce(vcat,[get_bounds(s)[1] for s in [m.cell.sens.components;m.cell.syns.components]])...,
-    [10.0 for _ in m.cell.state0]...,
-    [-0.1 for _ in m.cell.state0]...,
-    [5 for _ in m.cell.cm]...,
-    [20 for _ in m.cell.state0]...,
-  ] |> f32
 
-  lower, upper
+function get_bounds(m::LTCNet)
+  lb = [
+      get_bounds(m.mapin)[1]...,
+      get_bounds(m.cell)[1]...,
+      get_bounds(m.mapout)[1]...,
+  ]
+  ub = [
+    get_bounds(m.mapin)[2]...,
+    get_bounds(m.cell)[2]...,
+    get_bounds(m.mapout)[2]...,
+  ]
+  lb, ub
 end

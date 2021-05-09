@@ -75,8 +75,8 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   anim = Animation()
 
   function lg(p,x,y,model)
-    # reset_state!(model,p)
-    reset!(model)
+    reset_state!(model,p)
+    #reset!(model)
     # d = train_data[1]
     # x,y = d[1], d[2]
     m = model
@@ -103,8 +103,8 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   model = LTC.LTCNet(Wiring(2,1), solver, sensealg)
   #pp, re = Flux.destructure(model)
   # pp = DiffEqFlux.initial_params(model)
-  # lower,upper = get_bounds(model)
-  lower,upper = [],[]
+  lower,upper = get_bounds(model)
+  #lower,upper = [],[]
   #θ = Flux.params(model)
   #θ = Flux.params(pp)
 
@@ -165,7 +165,7 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   Profile.clear_malloc_data()
 
   optfun = OptimizationFunction((θ, p, x, y) -> lg(θ,x,y,model), GalacticOptim.AutoZygote())
-  optprob = OptimizationProblem(optfun, pp)
+  optprob = OptimizationProblem(optfun, pp, lb=lower, ub=upper)
   #using IterTools: ncycle
   #Juno.@profiler GalacticOptim.solve(optprob, opt, train_data, cb = cbg, maxiters = n) C = true
   GalacticOptim.solve(optprob, opt, train_dl, cb = cbg, maxiters = 1000)
@@ -204,7 +204,7 @@ end
 # Flux.trainable(model)
 
 #@time traintest(10, AutoTsit5(Rosenbrock23()))
-@time traintest(40)
+@time traintest(50)
 #@time traintest(10)
 #00:53 - 01:02 = 9 min compilation time
 

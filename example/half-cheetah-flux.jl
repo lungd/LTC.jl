@@ -38,7 +38,8 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
 
   function lg(p,x,y)
 	m = model
-	Flux.reset!(m)
+	#Flux.reset!(m)
+	reset_state!(model,p)
 	ŷ = map(xi -> m(xi,p), x)
     sum(sum([(ŷ[i] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y), ŷ, y
   end
@@ -80,8 +81,9 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   pp = initial_params(model)
   @show length(pp)
   # pp = DiffEqFlux.initial_params(model)
-  #lower,upper = get_bounds(model)
-  lower,upper = [],[]
+  lower,upper = get_bounds(model.layers[1])
+  lower,upper = get_bounds(model)
+  # lower,upper = [],[]
   @show length(lower)
 
   # @show length(train_dl)
@@ -105,7 +107,7 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   opt = Flux.Optimiser(ClipValue(0.5), ADAM(0.01))
 
   optfun = OptimizationFunction((θ, p, x, y) -> lg(θ,x,y), GalacticOptim.AutoZygote())
-  optprob = OptimizationProblem(optfun, pp)
+  optprob = OptimizationProblem(optfun, pp, lb=lower, ub=upper)
   #using IterTools: ncycle
   res1 = GalacticOptim.solve(optprob, opt, ncycle(train_dl,n), cb = cbg, maxiters = n)
   # return res1
