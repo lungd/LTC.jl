@@ -27,7 +27,7 @@ using GalacticOptim
 #import RecursiveArrayTools: DiffEqArray
 #using DiffEqCallbacks
 #using DistributionsAD
-# using ModelingToolkit
+using ModelingToolkit
 #using BenchmarkTools
 #using Plots
 #using Noise
@@ -57,7 +57,7 @@ export ncycle
 #@reexport using Statistics
 
 
-rand_uniform(TYPE, lb,ub,dims...) = TYPE.(rand(Uniform(lb,ub),dims...))# |> f64
+rand_uniform(TYPE, lb,ub,dims...) = TYPE.(rand(Uniform(lb,ub),dims...))
 
 #Zygote.@nograd rand_uniform, reshape
 
@@ -66,11 +66,12 @@ include("wiring.jl")
 #include("ncp_ensemble.jl")
 #include("ncp.jl")
 #include("_ncp.jl")
-include("ltcnet.jl")
+include("ltcnet_MTK.jl")
+include("problem_generator.jl")
 #include("_ncp_1.jl")
 #include("new_ncp.jl")
 #include("new_ncp_ensemble.jl")
-include("custom_train.jl")
+# include("custom_train.jl")
 #include("tullio-sigmoid.jl")
 # include("param_ranges.jl")
 
