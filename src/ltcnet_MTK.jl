@@ -61,7 +61,8 @@ function LTCCell(wiring, solver, sensealg; state0r=Float32.((0.01)))
   #defs_with_input = merge(defs, Dict(x_input[i] => 0 for i in 1:n_in))
   ks, ps = get_params(sys)
   #defs = vcat([ks[i] => ps[i] for i in 1:length(ps)])
-  prob = ODEProblem(sys, defs, Float32.((0,1)))
+  #prob = ODEProblem(sys, defs, Float32.((0,1)))
+  prob = ODEProblem(sys, defs, Float32.((0,1)), jac=true, sparse=true)
 
   param_names = collect(parameters(sys))
 
@@ -107,6 +108,8 @@ function solve_ode(m,h,x,p)
   pp = vcat((@view x[:,1]), (@view p[3:end]))
 
   prob = remake(m.prob, p=pp, u0=h)
+  # @show prob.p
+  # @show prob.u0
   # prob = remake(m.prob, p=pp)
   solve(prob, m.solver; sensealg=m.sensealg, save_everystep=false, save_start=false)[:,:,end]
 end
@@ -135,7 +138,6 @@ end
 
 
 function (m::LTCNet{MI,MO,T,<:AbstractMatrix{T2}})(x::AbstractVecOrMat{T2}, p) where {MI,MO,T,T2}
-  @show p
   mapin_pl = paramlength(m.mapin)
   mapout_pl = paramlength(m.mapout)
   cell_pl = paramlength(m.cell)

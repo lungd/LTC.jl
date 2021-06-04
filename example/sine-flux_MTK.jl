@@ -47,7 +47,6 @@ function data(iter; data_x=nothing, data_y=nothing, short=false, noisy=false)
     ncycle(generate_data(), iter)
 end
 
-
 function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
 
   #anim = Animation()
@@ -111,6 +110,6 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
 end
 
 
-
 @time traintest(1000)
+#@time traintest(1000, QNDF())
 # @time traintest(5000, AutoTsit5(Rosenbrock23()))

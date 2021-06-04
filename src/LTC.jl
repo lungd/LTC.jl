@@ -66,8 +66,12 @@ include("wiring.jl")
 #include("ncp_ensemble.jl")
 #include("ncp.jl")
 #include("_ncp.jl")
+
+# include("ltcnet.jl")
+
 include("ltcnet_MTK.jl")
 include("problem_generator.jl")
+
 #include("_ncp_1.jl")
 #include("new_ncp.jl")
 #include("new_ncp_ensemble.jl")
