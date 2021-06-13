@@ -73,6 +73,7 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   end
 
   #train_dl = generate_data()
+  batchsize = 1
   model = LTC.LTCNet(Wiring(2,1), solver, sensealg)
 
 
@@ -81,11 +82,11 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
 
   pp = DiffEqFlux.initial_params(model)
   @show length(pp)
-  @show length(pp)
 
   @show length(lower)
 
   train_dl = data(n)
+  @show typeof(train_dl)
 
   opt = GalacticOptim.Flux.Optimiser(ClipValue(0.5), ADAM(0.008))
 
@@ -99,6 +100,7 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   @show size(first(train_dl)[1])
   @show size(first(train_dl)[1][1])
   GalacticOptim.solve(optprob, opt, train_dl, cb = cbg)
+  # GalacticOptim.solve(optprob, opt, train_dl, cb = cbg)
 
 
 
@@ -110,6 +112,7 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
 end
 
 
-@time traintest(1000)
-#@time traintest(1000, QNDF())
-# @time traintest(5000, AutoTsit5(Rosenbrock23()))
+traintest(200)
+# @time traintest(1000, QNDF())
+# @time traintest(1000, TRBDF2())
+# @time traintest(1000, AutoTsit5(Rosenbrock23()))

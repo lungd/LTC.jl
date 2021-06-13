@@ -21,6 +21,12 @@ using DiffEqFlux: initial_params, paramlength, FastChain, FastDense, sciml_train
 import DiffEqFlux: initial_params, paramlength, FastChain, FastDense, sciml_train
 export sciml_train
 using GalacticOptim
+
+# using Folds
+# export Folds
+using ThreadsX
+export ThreadsX
+
 #export initial_params
 #using DiffRules
 #using RecursiveArrayTools
