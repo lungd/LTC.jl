@@ -6,6 +6,7 @@ using DiffEqSensitivity
 using OrdinaryDiffEq
 using DiffEqFlux
 using GalacticOptim
+using BlackBoxOptim
 
 include("half_cheetah_data_loader.jl")
 
@@ -35,17 +36,19 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   	# mean([GalacticOptim.Flux.Losses.mse(ŷ[i],y[i]) for i in 1:length(y)]), ŷ, y
     #sum(sum([(ŷ[i] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y), ŷ, y
   end
-  cbg = function (p,l,pred,y;doplot=true) #callback function to observe training
+  cbg = function (p,l,pred,y;doplot=true)
    display(l)
     if doplot
   	  fig = plot([ŷ[1,1] for ŷ in pred])
+          plot!(fig, [ŷ[2,1] for ŷ in pred])
   	  plot!(fig, [yi[1,1] for yi in y])
+          plot!(fig, [yi[2,1] for yi in y])
   	  display(fig)
   	end
   	return false
   end
 
-  batchsize=32
+  batchsize=64
 
   train_dl, test_dl, valid_dl = get_dl(batchsize=batchsize, seq_len=32)
 
@@ -59,13 +62,12 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
           inter_in=2, rec_inter=2, inter_command=3, inter_motor=1,                       # inter_in = sensory_out
           command_in=0, rec_command=4, command_motor=2,                   # command_in = inter_out
           motor_in=0, rec_motor=3), solver, sensealg)
-  model1 = ncp
 
-  dense = DiffEqFlux.FastDense(ncp.cell.wiring.n_total,17)
+  dense = DiffEqFlux.FastDense(ncp.cell.wiring.n_motor,17)
 
   # model = (x,p) -> ncp(x,p)[end-16:end, :]
-  # model = DiffEqFlux.FastChain(ncp, (x,p)->x[end-16:end, :], dense)
-  model = DiffEqFlux.FastChain(ncp, dense)
+  model = DiffEqFlux.FastChain(ncp, (x,p)->x[end-16:end, :], dense)
+  # model = DiffEqFlux.FastChain(ncp, dense)
 
 
   pp = initial_params(model)
@@ -77,27 +79,26 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   @show length(lb)
   @show length(ub)
 
-  opt = Flux.Optimiser(ClipValue(0.50), ADAM(0.005))
-
-  # optfun = OptimizationFunction((θ, p, x, y) -> lg(θ,x,y, model), GalacticOptim.AutoZygote())
-  optfun = OptimizationFunction((θ, p, x, y) -> lg(θ,x,y, model), GalacticOptim.AutoModelingToolkit())
+  optfun = OptimizationFunction((θ, p, x, y) -> lg(θ,x,y, model), GalacticOptim.AutoZygote())
+  # optfun = OptimizationFunction((θ, p, x, y) -> lg(θ,x,y, model), GalacticOptim.AutoModelingToolkit())
 
   optprob = OptimizationProblem(optfun, pp, lb=lb, ub=ub,
                                 #grad = true, hess = true, sparse = true,
                                 #parallel=ModelingToolkit.MultithreadedForm()
                                 )
-  res1 = GalacticOptim.solve(optprob, opt, ncycle(train_dl,n), cb = cbg)
+  # res1 = GalacticOptim.solve(optprob, Flux.Optimiser(ClipValue(0.50), ADAM(0.005)), ncycle(train_dl,n), cb = cbg)
+  # res1 = GalacticOptim.solve(optprob, Optim.LBFGS(), ncycle(train_dl,n), cb = cbg)
+  res1 = GalacticOptim.solve(optprob, BBO(), ncycle(train_dl,n), cb = cbg)
   # res1 = GalacticOptim.solve(optprob, ParticleSwarm(;lower=lb, upper=ub), ncycle(train_dl,n), cb = cbg)
-
-  # res1 = GalacticOptim.solve(optprob, BBO(), ncycle(train_dl,n), cb = cbg)
-  # res1 = GalacticOptim.solve(optprob, CMAES(μ =40 , λ = 100), ncycle(train_dl,n), cb = cbg)
   # res1 = GalacticOptim.solve(optprob, Fminbox(GradientDescent()), ncycle(train_dl,n), cb = cbg)
+
+  # res1 = GalacticOptim.solve(optprob, CMAES(μ =40 , λ = 100), ncycle(train_dl,n), cb = cbg)
   # res1 = GalacticOptim.solve(optprob, Opt(:LD_LBFGS, length(pp)), ncycle(train_dl,n), cb = cbg)
 
   res1, model
 end
 
-@time res1,model = traintest(300)
+@time res1,model = traintest(1)
 # @time res1,model = traintest(5, VCABM(), InterpolatingAdjoint(checkpointing=true, autojacvec=ReverseDiffVJP(true)))
 # @time res1,model = traintest(5, Tsit5(), InterpolatingAdjoint(checkpointing=true))
 # @time res1,model = traintest(5, AutoTsit5(Rosenbrock23()), InterpolatingAdjoint(checkpointing=true, autojacvec=ReverseDiffVJP(true)))
