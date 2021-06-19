@@ -9,6 +9,7 @@ using GalacticOptim
 using Juno
 using Cthulhu
 using Profile
+using BlackBoxOptim
 #using PProf
 
 function generate_data()
@@ -18,32 +19,10 @@ function generate_data()
     data_x = [sin.(range(0,stop=3π,length=N)), cos.(range(0,stop=3π,length=N))]
     data_x = [reshape([Float32(data_x[1][i]),Float32(data_x[2][i])],2,1) for i in 1:N]# |> f32
     data_y = [reshape([Float32(y)],1) for y in sin.(range(0,stop=6π,length=N))]# |> f32
-
-    #data_x = [repeat(x,1,20) for x in data_x]
-    #data_y = [repeat(x,1,20) for x in data_y]
-
-    # data_x, data_y
     DataLoader((data_x, data_y), batchsize=N)
 end
 
 function data(iter; data_x=nothing, data_y=nothing, short=false, noisy=false)
-    #noisy_data = Vector{Tuple{Vector{Matrix{Float64}}, Vector{Vector{Float64}}}}([])
-    # if data_y === nothing
-    #   data_x, data_y = generate_data()
-    # end
-    # noisy_data = Vector{Tuple{Vector{Matrix{eltype(data_x[1])}}, Vector{Vector{eltype(data_y[1])}}}}([])
-    # for i in 1:iter
-    #     x = data_x
-    #     y = data_y
-    #     if short isa Array
-    #       x = x[short[1]:short[2]]
-    #       y = y[short[1]:short[2]]
-    #     end
-    #     push!(noisy_data, (x , noisy ? add_gauss.(y,0.02) : y))
-    # end
-    # noisy_data
-
-
     ncycle(generate_data(), iter)
 end
 
@@ -52,20 +31,17 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   #anim = Animation()
 
   function lg(p,x,y,model)
-    # reset_state!(model,p)
-    reset!(model)
-    #ŷ = [m(xi,p)[end-m.cell.wiring.n_motor+1:end, :] for xi in x]
+    reset_state!(model,p)
+    # reset!(model)
     ŷ = model.(x,[p])
-    #ŷ = map(xi -> m(xi,p), x)
-    #losses = [Flux.Losses.mse(ŷ[i][end,:], y[i]) for i in 1:length(y)]
-    #sum(losses)/length(losses), ŷ
-    sum(sum([(ŷ[i][end,:] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y), ŷ, y
+    # sum(sum([(ŷ[i][end,:] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y), ŷ, y
+    mean(GalacticOptim.Flux.Losses.mse.(ŷ,y)), ŷ, y
   end
   cbg = function (p,l,pred,y;doplot=true)
     display(l)
     if doplot
-      fig = plot([ŷ[end,1] for ŷ in pred])
-      plot!(fig, [yi[end,1] for yi in y])
+      fig = plot([ŷ[end,1] for ŷ in pred], label="ŷ")
+      plot!(fig, [yi[end,1] for yi in y], label="y")
       #frame(anim)
       display(fig)
     end
@@ -76,43 +52,20 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   batchsize = 1
   model = LTC.LTCNet(Wiring(2,1), solver, sensealg)
 
-
-  # lower,upper = get_bounds(model)
-  lower,upper = [],[]
-
-  pp = DiffEqFlux.initial_params(model)
-  @show length(pp)
-
-  @show length(lower)
-
   train_dl = data(n)
-  @show typeof(train_dl)
-
   opt = GalacticOptim.Flux.Optimiser(ClipValue(0.5), ADAM(0.008))
+  # opt = Optim.LBFGS()
+  # opt = BBO()
+  # opt = ParticleSwarm(;lower=lb, upper=ub)
+  # opt = Fminbox(GradientDescent())
+  AD = GalacticOptim.AutoZygote()
+  # AD = GalacticOptim.AutoModelingToolkit()
 
+  LTC.optimize(model, lg, cbg, opt, AD, train_dl)
 
-  optfun = OptimizationFunction((θ, p, x, y) -> lg(θ,x,y,model), GalacticOptim.AutoZygote())
-  # optfun = OptimizationFunction((θ, p, x, y) -> lg(θ,x,y,model), GalacticOptim.AutoModelingToolkit())
-  # optprob = OptimizationProblem(optfun, pp, lb=lower, ub=upper)
-  optprob = OptimizationProblem(optfun, pp)
-  #using IterTools: ncycle
-  #Juno.@profiler GalacticOptim.solve(optprob, opt, train_data, cb = cbg, maxiters = n) C = true
-  @show size(first(train_dl)[1])
-  @show size(first(train_dl)[1][1])
-  GalacticOptim.solve(optprob, opt, train_dl, cb = cbg)
-  # GalacticOptim.solve(optprob, opt, train_dl, cb = cbg)
-
-
-
-  # sciml_train(p->lg(p,model), pp, opt, cb = cbg, maxiters=100)
-
-
-
-  #Juno.@profiler my_custom_train!(model, (x,y) -> loss(x,y,model), θ, train_data, opt; cb, lower, upper) C = true
 end
 
-
-traintest(200)
+@time traintest(2000)
 # @time traintest(1000, QNDF())
 # @time traintest(1000, TRBDF2())
 # @time traintest(1000, AutoTsit5(Rosenbrock23()))

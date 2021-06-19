@@ -2,14 +2,14 @@ module LTC
 
 using Reexport
 
-using LazyArrays
+# using LazyArrays
 using Distributions
 import NPZ: npzread
 export npzread
 using Juno
-using LoopVectorization
-using StructArrays
-using MacroTools: @forward
+# using LoopVectorization
+# using StructArrays
+# using MacroTools: @forward
 
 #using Flux
 
@@ -24,8 +24,8 @@ using GalacticOptim
 
 # using Folds
 # export Folds
-using ThreadsX
-export ThreadsX
+# using ThreadsX
+# export ThreadsX
 
 #export initial_params
 #using DiffRules
@@ -85,7 +85,8 @@ include("problem_generator.jl")
 #include("tullio-sigmoid.jl")
 # include("param_ranges.jl")
 
-
+include("optimization.jl")
+export optimize
 export get_bounds
 
 

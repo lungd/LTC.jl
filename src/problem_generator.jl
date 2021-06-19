@@ -2,8 +2,177 @@ using LTC
 using ModelingToolkit
 using LTC: rand_uniform
 
-# @parameters t
-# D = Differential(t)
+@parameters t
+D = Differential(t)
+
+function ExternalInput(;name)
+  vars = @variables x(t)
+  ps = @parameters val
+  eqs = Equation[
+    x ~ val
+  ]
+  defaults = Dict(
+    val => 13.37f0
+  )
+  ODESystem(eqs,t,vars,ps; defaults, name)
+end
+
+
+@register GalacticOptim.Flux.sigmoid(t)
+
+function SigmoidSynapse(;name)
+  vars = @variables I(t), v_pre(t), v_post(t)
+  ps = @parameters μ, σ, G, E
+  eqs = [
+    I ~ G * GalacticOptim.Flux.sigmoid((v_pre - μ) * σ) * (v_post - E)
+  ]
+  defaults = Dict(
+    μ => rand_uniform(Float32, 0.3, 0.8, 1)[1],
+    σ => rand_uniform(Float32, 3, 8, 1)[1],
+    G => rand_uniform(Float32, 0.001, 1, 1)[1],
+    E => rand_uniform(Float32, -0.3, 0.3, 1)[1],
+  )
+  systems = ODESystem[]
+  ODESystem(eqs, t, vars, ps; systems, defaults, name)
+end
+
+
+function GapJunction(;name)
+  vars = @variables I(t), v_pre(t), v_post(t)
+  ps = @parameters G
+  eqs = [
+    I ~ G * (v_pre - v_post)
+  ]
+  defaults = Dict(
+    G => rand_uniform(Float32, 0.001, 1, 1)[1],
+  )
+  systems = ODESystem[]
+  ODESystem(eqs, t, vars, ps; systems, defaults, name)
+end
+
+
+function LeakChannel(;name)
+  vars = @variables I(t), v(t)
+  ps = @parameters G, E
+  eqs = [
+    I ~ G * (v - E)
+  ]
+  defaults = Dict(
+    G => rand_uniform(Float32, 0.001, 1, 1)[1],
+    E => rand_uniform(Float32, -0.3, 0.3, 1)[1],
+  )# : Dict()
+  # setmetadata(G, OptimRange, Float32.([0,1]))
+  # setmetadata(E, OptimRange, Float32.([-1,1]))
+  systems = ODESystem[]
+  ODESystem(eqs, t, vars, ps; systems, defaults, name)
+end
+
+function Neuron(; name)
+  vars = @variables v(t), I_comps(t)
+  ps = @parameters Cm
+  @named leak = LeakChannel()
+  eqs = [
+    D(v) ~ -Cm * (leak.I + I_comps)
+    leak.v ~ v
+  ]
+  defaults = Dict(
+    v => rand_uniform(Float32, 0.001, 0.2, 1)[1],
+    Cm => rand_uniform(Float32, 1, 3, 1)[1],
+  )
+  systems = ODESystem[leak]
+  ODESystem(eqs, t, vars, ps; systems, defaults, name)
+end
+
+
+function vCaNeuron(; name)
+  vars = @variables v(t), Ca(t), I_comps(t)
+  ps = @parameters Cm
+  @named leak = LeakChannel()
+  eqs = [
+    D(v) ~ -Cm * (leak.I + I_comps)
+    D(Ca) ~ α*exp(-τ) - β*Ca
+    leak.v ~ v
+  ]
+  defaults = Dict(
+    v => rand_uniform(Float32, -80, -30, 1)[1],
+    Ca => rand_uniform(Float32, 0.001, 0.2, 1)[1],
+    Cm => rand_uniform(Float32, 1, 3, 1)[1],
+  )
+  systems = ODESystem[leak]
+  ODESystem(eqs, t, vars, ps; systems, defaults, name)
+end
+
+
+
+function Net(wiring; name)
+  @parameters t
+  vars = Num[]
+  ps = Num[]
+  eqs = Equation[]
+  systems = ODESystem[]
+
+  N = wiring.n_total
+  inputs = [ExternalInput(name=Symbol("x_$(i)_ExternalInput")) for i in 1:wiring.n_in]
+  systems = ODESystem[inputs...]
+
+  n = 1
+  neurons = ODESystem[]
+  for i in 1:wiring.n_sensory
+    push!(neurons, Neuron(;name=Symbol("n$(n)_SensoryNeuron")))
+    n += 1
+  end
+  for i in 1:wiring.n_inter
+    push!(neurons, Neuron(;name=Symbol("n$(n)_InterNeuron")))
+    n += 1
+  end
+  for i in 1:wiring.n_command
+    push!(neurons, Neuron(;name=Symbol("n$(n)_CommandNeuron")))
+    n += 1
+  end
+  for i in 1:wiring.n_motor
+    push!(neurons, Neuron(;name=Symbol("n$(n)_MotorNeuron")))
+    n += 1
+  end
+  # neurons = ODESystem[Neuron(;name=Symbol("n$(n)_Neuron")) for n in 1:N]
+  push!(systems, neurons...)
+
+  n = 1
+  for dst in 1:length(neurons)
+    I_comps_dst = 0
+    for src in 1:length(wiring.sens_mask[:,dst])
+      wiring.sens_mask[src,dst] == 0 && continue
+      syn = SigmoidSynapse(;name=Symbol("$(n)_x_$(src)-->n$(dst)_SigmoidSynapse"))
+      n += 1
+      push!(eqs, syn.v_pre ~ inputs[src].x)                         # TODO: param + callback for input ?
+      push!(eqs, syn.v_post ~ neurons[dst].v)
+      push!(systems, syn)
+      I_comps_dst += syn.I
+    end
+    for src in 1:length(wiring.syn_mask[:,dst])
+      wiring.syn_mask[src,dst] == 0 && continue
+      syn = SigmoidSynapse(;name=Symbol("$(n)_n$(src)-->n$(dst)_SigmoidSynapse"))
+      n += 1
+      push!(eqs, syn.v_pre ~ neurons[src].v)
+      push!(eqs, syn.v_post ~ neurons[dst].v)
+      push!(systems, syn)
+      I_comps_dst += syn.I
+    end
+    push!(eqs, neurons[dst].I_comps ~ I_comps_dst)
+  end
+  defaults = Dict()
+  ODESystem(eqs, t, vars, ps; systems, defaults, name=name)
+end
+
+
+
+
+
+
+
+####################################
+# OBSOLETE CODE
+####################################
+
 
 # function Mapper(;name)
 #   vars = @variables v(t), x(t)
@@ -34,163 +203,6 @@ using LTC: rand_uniform
 #   systems = ODESystem[]
 #   ModelingToolkit.ODESystem(eqs, t, vars, ps; systems, defaults, name)
 # end
-
-function ExternalInput(;name)
-  @parameters t
-  vars = []
-  vars = @variables x(t)#, val(t)
-  #ps = @parameters x#[1:n_in]
-  #ps = []
-  ps = @parameters val
-  eqs = Equation[
-    #[x[i] ~ val[i] for i in 1:n_in]...
-    x ~ val
-  ]
-  defaults = Dict(
-    val => 13.37f0
-    #x => 0f0
-  )
-  ODESystem(eqs,t,vars,ps; defaults, name)
-end
-
-
-# @register sigmoid(rand(Float32))
-# @register sigmoid(t)
-@register GalacticOptim.Flux.sigmoid(t)
-
-function SigmoidSynapse(;name)
-  @parameters t
-  vars = @variables I(t), v_pre(t), v_post(t)
-  ps = @parameters μ, σ, G, E
-  eqs = [
-    # I ~ G * (1f0 / (1f0 + exp(-((v_pre - μ) * σ)))) * (v_post - E)
-    I ~ G * GalacticOptim.Flux.sigmoid((v_pre - μ) * σ) * (v_post - E)
-  ]
-  defaults = Dict(
-    μ => rand_uniform(Float32, 0.3, 0.8, 1)[1],
-    σ => rand_uniform(Float32, 3, 8, 1)[1],
-    G => rand_uniform(Float32, 0.001, 1, 1)[1],
-    E => rand_uniform(Float32, -0.3, 0.3, 1)[1],
-  )
-  # setmetadata(μ, OptimRange, Float32.([0,1]))
-  # setmetadata(σ, OptimRange, Float32.([0,10]))
-  # setmetadata(G, OptimRange, Float32.([0,1]))
-  # setmetadata(E, OptimRange, Float32.([-1,1]))
-  systems = ODESystem[]
-  ODESystem(eqs, t, vars, ps; systems, defaults, name)
-end
-
-function LeakChannel(;name)
-  @parameters t
-  vars = @variables I(t), v(t)
-  ps = @parameters G, E
-  eqs = [
-    I ~ G * (v - E)
-  ]
-  defaults = Dict(
-    G => rand_uniform(Float32, 0.001, 1, 1)[1],
-    E => rand_uniform(Float32, -0.3, 0.3, 1)[1],
-  )# : Dict()
-  # setmetadata(G, OptimRange, Float32.([0,1]))
-  # setmetadata(E, OptimRange, Float32.([-1,1]))
-  systems = ODESystem[]
-  ODESystem(eqs, t, vars, ps; systems, defaults, name)
-end
-
-function Neuron(; name)
-  @parameters t
-  D = Differential(t)
-  vars = @variables v(t), I_comps(t)#, mo(t)
-  ps = @parameters Cm
-  @named leak = LeakChannel()
-  #@named mapout = Mapout()
-  eqs = [
-    D(v) ~ -Cm * (leak.I + I_comps)
-    leak.v ~ v
-    #mapout.x ~ v
-    #mo ~ mapout.v
-  ]
-  v0 = rand_uniform(Float32, 0.001, 0.2, 1)[1]
-  defaults = Dict(
-    #mo => v0,
-    #v => v0,
-    v => rand_uniform(Float32, 0.001, 0.2, 1)[1],
-    Cm => rand_uniform(Float32, 1, 3, 1)[1],
-  )
-  # setmetadata(v, OptimRange, Float32.([0,1]))
-  # setmetadata(Cm, OptimRange, Float32.([1,3]))
-  systems = ODESystem[leak]
-  #systems = ODESystem[leak, mapout]
-  ODESystem(eqs, t, vars, ps; systems, defaults, name=name)
-end
-
-function Net(wiring; name)
-  @parameters t
-  vars = Num[]
-  ps = Num[]
-  eqs = Equation[]
-  systems = ODESystem[]
-
-  N = wiring.n_total
-  #input = @variables xxx[1:size(wiring.sens_mask,1)](t)
-  # input = @parameters xxx[1:size(wiring.sens_mask,1)]
-  #output = @variables hhh[1:N](t)
-  #input = [(identity)((Num)(((Sym){(SymbolicUtils.FnType){NTuple{1, Any}, Real}}(Symbol("xxx$(i)")))((Symbolics.value)(t)))) for i in 1:size(wiring.sens_mask,1)]
-  # input = [(Num)((Sym){Real}(Symbol("xxx$(i)"))) for i in 1:size(wiring.sens_mask,1)]
-  # output = [(identity)((Num)(((Sym){(SymbolicUtils.FnType){NTuple{1, Any}, Real}}(Symbol("hhh$(i)")))((Symbolics.value)(t)))) for i in 1:N]
-  #vars = vcat(input...)
-  #ps = vcat(input...)
-  #@show vars
-  #@show ps
-
-  inputs = [ExternalInput(name=Symbol("x_$(i)_ExternalInput")) for i in 1:wiring.n_in]
-
-  # ps = @parameters xxx_val[1:size(wiring.sens_mask,1)]
-  systems = ODESystem[inputs...]
-
-  #@variables x_input[1:size(wiring.sens_mask,1)](t)
-
-  neurons = ODESystem[Neuron(;name=Symbol("n$(n)_Neuron")) for n in 1:N]
-  push!(systems, neurons...)
-  #push!(eqs, [D(x_input[i]) ~ 0 for i in 1:size(x_input,1)]...)
-
-  # for i in 1:size(input,1)
-  #   # push!(eqs, D(input[1][i]) ~ 0)
-  #   push!(eqs, input[i] ~ inputs[i].x)
-  # end
-
-  for dst in 1:length(neurons)
-    I_comps_dst = 0
-    for src in 1:length(wiring.sens_mask[:,dst])
-      wiring.sens_mask[src,dst] == 0 && continue
-      syn = SigmoidSynapse(;name=Symbol("x_$(src)-->n$(dst)_SigmoidSynapse"))
-      push!(eqs, syn.v_pre ~ inputs[src].x)                         # TODO: param + callback for input ?
-      # push!(eqs, syn.v_pre ~ input[src])
-      #push!(eqs, D(syn.v_pre) ~ 0)
-      push!(eqs, syn.v_post ~ neurons[dst].v)
-      push!(systems, syn)
-      I_comps_dst += syn.I
-    end
-    for src in 1:length(wiring.syn_mask[:,dst])
-      wiring.syn_mask[src,dst] == 0 && continue
-      syn = SigmoidSynapse(;name=Symbol("n$(src)-->n$(dst)_SigmoidSynapse"))
-      push!(eqs, syn.v_pre ~ neurons[src].v)
-      push!(eqs, syn.v_post ~ neurons[dst].v)
-      push!(systems, syn)
-      I_comps_dst += syn.I
-    end
-    push!(eqs, neurons[dst].I_comps ~ I_comps_dst)
-    #push!(eqs, output[1][dst] ~ neurons[dst].v)
-  end
-  defaults = Dict(
-    #[input[i] => 0f0 for i in 1:size(input,1)]...,
-  )
-  ODESystem(eqs, t, vars, ps; systems, defaults, name=name)
-end
-
-
-
-
 
 
 
