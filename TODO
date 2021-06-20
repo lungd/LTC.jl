@@ -1,8 +1,26 @@
-Fix compilation time
-Fix Flux-compatibility and reset_state!
-Remove ExternalInput and add vars to the most outer container system (Net() ATM)
+Fix time to start !!!
+@time res1,model = traintest(10)
+461.522541 seconds (743.05 M allocations: 45.819 GiB, 2.71% gc time, 2.66% compilation time)
+~ 9:30 for sine-flux_MTK.jl with new session
+type instabilities ???
+
+Finish Flux-compatibility and reset_state!
+
+Make use of wiring.n_out (y[end-out, :] inside model call) or better: let the user define what the output is ?
+map external input to destinations based on some user Dict. (not randomly) ?
+Remove ExternalInput and add vars to the most outer container system (Net() ATM) ?
+Move scaling Mapper from NCPNet to (Fast)Chain ?
 Remove obsolete dependencies
-Move Mapper from NCPNet to (Fast)Chain
-Change bounds to biological ranges (e.g. v from -100 to 100)
+Move for loop to model function (m.(x), for xi in x) ?
+Change inits/bounds to physiological ranges (e.g. v from -100 to 100)
+How/where to check if solution stays in physiological ranges ?
+Callback to check physiological ranges ?
+Multi-objective optimization (e.g. target (train_y) and electrophysiological features of solution )
+Module based Nets/Systems ?
+"Big system" and EnsembleProblem for SDEs (solve Big system containing batchize sytems N times to get some means) ?
+How to train for input? What if I want to know how the input has to look like to get a system to produce a target output?
+How to add NN components to the MTK system (UDE) ??
+Use Unitful
+
 Use package for parameters (get rid of e.g p_mapin = @view p[1 : mapin_pl])
-Use metadata for initial values and bounds
+Use metadata for initial values and bounds. how to set and use custom metadata to symbolics vars ??
