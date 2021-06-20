@@ -1,0 +1,8 @@
+Fix compilation time
+Fix Flux-compatibility and reset_state!
+Remove ExternalInput and add vars to the most outer container system (Net() ATM)
+Remove obsolete dependencies
+Move Mapper from NCPNet to (Fast)Chain
+Change bounds to biological ranges (e.g. v from -100 to 100)
+Use package for parameters (get rid of e.g p_mapin = @view p[1 : mapin_pl])
+Use metadata for initial values and bounds
