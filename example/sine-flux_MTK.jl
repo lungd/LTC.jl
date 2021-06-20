@@ -30,13 +30,28 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
 
   #anim = Animation()
 
-  function lg(p,x,y,model)
-    reset_state!(model,p)
-    # reset!(model)
-    ŷ = model.(x,[p])
-    # sum(sum([(ŷ[i][end,:] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y), ŷ, y
+  function lg(p,x,y, m)
+    # LTC.reset_state!(m,p)
+    reset!(m)
+
+    ŷb = GalacticOptim.Flux.Zygote.Buffer(rand(eltype(y[1]),1,1,1), size(y,1), size(y[1],1), size(y[1],2))
+    for (i, xi) in enumerate(x)
+      ŷi = m(xi, p)[end,:][:,:]
+      ŷb[i,:,:] = ŷi
+      Inf32 ∈ ŷi && return Inf32, ŷi, y
+    end
+    # Inf32 ∈ ŷ && return Inf32, [ŷ[1,:,:]], y
+    ŷ = Flux.unstack(copy(ŷb),1)
     mean(GalacticOptim.Flux.Losses.mse.(ŷ,y)), ŷ, y
   end
+
+  # function lg(p,x,y,model)
+  #   reset_state!(model,p)
+  #   # reset!(model)
+  #   ŷ = model.(x,[p])
+  #   # sum(sum([(ŷ[i][end,:] .- y[i]) .^ 2 for i in 1:length(y)]))/length(y), ŷ, y
+  #   mean(GalacticOptim.Flux.Losses.mse.(ŷ,y)), ŷ, y
+  # end
   cbg = function (p,l,pred,y;doplot=true)
     display(l)
     if doplot
@@ -53,7 +68,7 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   model = LTC.LTCNet(Wiring(2,1), solver, sensealg)
 
   train_dl = data(n)
-  opt = GalacticOptim.Flux.Optimiser(ClipValue(0.5), ADAM(0.008))
+  opt = GalacticOptim.Flux.Optimiser(ClipValue(0.5), ADAM(0.01))
   # opt = Optim.LBFGS()
   # opt = BBO()
   # opt = ParticleSwarm(;lower=lb, upper=ub)

@@ -1,21 +1,21 @@
 #using Dates
 
 # TODO: outside NCP net?
-struct Mapper{V,F<:Function}
+struct Mapper{V}
   W::V
   b::V
-  initial_params::F
+  p::V
   paramlength::Int
 end
 function Mapper(in::Integer)
   W = ones(Float32,in)
   b = zeros(Float32,in)
   p = vcat(W,b)
-  initial_params() = p
-  Mapper(W, b, initial_params, length(p))
+  Mapper(W, b, p, length(p))
 end
+Flux.@functor Mapper (p,)
 
-function (m::Mapper)(x::AbstractVecOrMat, p) where T
+function (m::Mapper)(x::AbstractVecOrMat, p=m.p) where T
   Wl = size(m.W,1)
   W = @view p[1 : Wl]
   b = @view p[Wl + 1 : end]
@@ -23,11 +23,11 @@ function (m::Mapper)(x::AbstractVecOrMat, p) where T
 end
 Base.show(io::IO, m::Mapper) = print(io, "Mapper(", length(m.W), ")")
 
-initial_params(m::Mapper) = m.initial_params()
+initial_params(m::Mapper) = m.p
 paramlength(m::Mapper) = m.paramlength
 
 
-struct LTCCell{W<:Wiring,NET,SYS,PROB,DEFS,KS,I,U0,S<:AbstractMatrix,SOLVER,SENSEALG,F<:Function}
+struct LTCCell{W<:Wiring,NET,SYS,PROB,DEFS,KS,I,U0,S<:AbstractMatrix,SOLVER,SENSEALG,V}
   wiring::W
   net::NET
   sys::SYS
@@ -39,11 +39,12 @@ struct LTCCell{W<:Wiring,NET,SYS,PROB,DEFS,KS,I,U0,S<:AbstractMatrix,SOLVER,SENS
   state0::S
   solver::SOLVER
   sensealg::SENSEALG
-  initial_params::F
+  p::V
   paramlength::Int
   param_names::Vector{String}
 end
 
+Flux.@functor LTCCell (p,)
 
 function LTCCell(wiring, solver, sensealg; state0r=Float32.((0.01)))
   n_in = wiring.n_in
@@ -78,7 +79,7 @@ function LTCCell(wiring, solver, sensealg; state0r=Float32.((0.01)))
   # p = p_ode
 
   # initial_params() = Float32.(prob.p)
-  initial_params() = p
+  # initial_params = p
 
 
   @show param_names
@@ -88,16 +89,16 @@ function LTCCell(wiring, solver, sensealg; state0r=Float32.((0.01)))
   @show length(prob.p[n_in+1:end])
   @show input_idxs
 
-  LTCCell(wiring, net, sys, prob, defs, param_names, input_idxs, u0_idxs, state0, solver, sensealg, initial_params, length(p), string.(param_names))
+  LTCCell(wiring, net, sys, prob, defs, param_names, input_idxs, u0_idxs, state0, solver, sensealg, p, length(p), string.(param_names))
 end
 
 
 Base.show(io::IO, m::LTCCell) = print(io, "LTCCell(", m.wiring.n_sensory, ",", m.wiring.n_inter, ",", m.wiring.n_command, ",", m.wiring.n_motor, ")")
-initial_params(m::LTCCell) = m.initial_params()
+initial_params(m::LTCCell) = m.p
 paramlength(m::LTCCell) = m.paramlength
 
 
-function (m::LTCCell)(h::AbstractVecOrMat, x::AbstractVecOrMat, p)
+function (m::LTCCell)(h::AbstractVecOrMat, x::AbstractVecOrMat, p=m.p)
   h = repeat(h, 1, size(x,2)-size(h,2)+1)#::AbstractMatrix
   p_ode_l = size(p,1) - size(h,1)
   p_ode = @view p[1:p_ode_l] # without x, without u0
@@ -119,10 +120,21 @@ function solve_ensemble(m,h,x,p)#::AbstractMatrix
     remake(prob, p=pp, u0=u0i)
   end
 
+  # function output_func(sol,i)
+  #   # @show size(sol)
+  #   sol[:,1], false
+  # end
+  infs = fill(Inf32, size(h,1))
   function output_func(sol,i)
-    # @show size(sol)
-    sol[:,1], false
+    sol.retcode != :Success && return infs, false
+    sol[:, end], false
   end
+  #
+  # function reduction(u,data,I)
+  #   u = append!(u,data)
+  #   finished = (var(u) / sqrt(last(I))) / mean(u) < 0.5
+  #   u, finished
+  # end
 
   _u0 = @view h[:,1]
   _p = vcat((@view x[:,1]), p)
@@ -162,12 +174,12 @@ function solve_ode(m,h,x,p)
 end
 
 
-mutable struct LTCNet{MI<:Mapper,MO<:Mapper,T<:LTCCell,S,F<:Function}
+mutable struct LTCNet{MI<:Mapper,MO<:Mapper,T<:LTCCell,S,V}
   mapin::MI
   mapout::MO
   cell::T
   state::S
-  initial_params::F
+  p::V
   paramlength::Int
   #LTCNet(mapin,mapout,cell,state) = new{typeof(mapin),typeof(mapout),typeof(cell),typeof(state)}(mapin,mapout,cell,state)
 end
@@ -180,13 +192,15 @@ function LTCNet(wiring,solver,sensealg)
   #p = DiffEqFlux.initial_params(cell)
   # p = vcat(DiffEqFlux.initial_params(cell), DiffEqFlux.initial_params(mapout))
   # @show length(p)
-  initial_params() = p
+  # initial_params = p
 
-  LTCNet(mapin,mapout,cell,cell.state0,initial_params,length(p))
+  LTCNet(mapin,mapout,cell,cell.state0,p,length(p))
 end
 
+Flux.@functor Mapper (p,)
 
-function (m::LTCNet{MI,MO,T,<:AbstractMatrix{T2}})(x::AbstractVecOrMat{T2}, p) where {MI,MO,T,T2}
+
+function (m::LTCNet{MI,MO,T,<:AbstractMatrix{T2}})(x::AbstractVecOrMat{T2}, p=m.p) where {MI,MO,T,T2}
   mapin_pl = paramlength(m.mapin)
   mapout_pl = paramlength(m.mapout)
   cell_pl = paramlength(m.cell)
@@ -200,22 +214,34 @@ function (m::LTCNet{MI,MO,T,<:AbstractMatrix{T2}})(x::AbstractVecOrMat{T2}, p) w
 
   x = m.mapin(x, p_mapin)
   m.state, y = m.cell(m.state, x, p_cell)
+  # Inf32 ∈ m.state && return m.state
   m.mapout(y, p_mapout)
   #y
 end
 
-initial_params(m::LTCNet) = m.initial_params()
+initial_params(m::LTCNet) = m.p
 paramlength(m::LTCNet) = m.paramlength
 
 Base.show(io::IO, m::LTCNet) = print(io, "LTCNet(", m.mapin, ",", m.mapout, ",", m.cell, ")")
 
-reset!(m::LTCNet) = (m.state = m.cell.state0)
+# reset!(m::LTCNet) = (m.state = m.cell.state0)
+reset!(m::LTCNet, p=m.p) = (m.state = reshape(p[end-length(m.cell.state0)+1:end],:,1))
 reset!(m::DiffEqFlux.FastChain) = map(l -> reset!(l), m.layers)
 # reset!(m) = nothing
 
-reset_state!(m::LTCNet, p) = (m.state = reshape(p[end-length(m.cell.state0)+1:end],:,1))
-reset_state!(m::DiffEqFlux.FastChain, p) = map(l -> reset_state!(l,p), m.layers)
-reset_state!(m,p) = nothing
+reset_state!(m::LTCNet, p=m.p) = (m.state = reshape(p[end-length(m.cell.state0)+1:end],:,1))
+# reset_state!(m::DiffEqFlux.FastChain, p) = map(l -> reset_state!(l, initial_params(l)), m.layers)
+function reset_state!(m::DiffEqFlux.FastChain, p)
+  start_idx = 1
+  for l in m.layers
+    pl = paramlength(l)
+    p_layer = @view p[start_idx:start_idx+pl-1]
+    reset_state!(l,p_layer)
+    start_idx += pl
+  end
+end
+reset_state!(m::Flux.Chain) = map(l -> reset_state!(l), m.layers)
+reset_state!(m,p=[]) = nothing
 
 
 
@@ -228,19 +254,19 @@ function get_bounds(m::DiffEqFlux.FastChain)
 end
 
 function get_bounds(m::DiffEqFlux.FastDense)
-  lb = [[-2.0 for _ in 1:m.out*m.in]...,
-        [-2.0 for _ in 1:m.out]...] |> f32
-  ub = [[2.0 for _ in 1:m.out*m.in]...,
-        [2.0 for _ in 1:m.out]...] |> f32
+  lb = [[-100.1 for _ in 1:m.out*m.in]...,
+        [-100.1 for _ in 1:m.out]...] |> f32
+  ub = [[100.1 for _ in 1:m.out*m.in]...,
+        [100.1 for _ in 1:m.out]...] |> f32
   return lb, ub
 end
 
 function get_bounds(m::Mapper)
-  lb = [[-20.1 for i in 1:length(m.W)]...,
-        [-20.1 for i in 1:length(m.b)]...] |> f32
+  lb = [[-100.1 for i in 1:length(m.W)]...,
+        [-100.1 for i in 1:length(m.b)]...] |> f32
 
-  ub = [[20.1 for i in 1:length(m.W)]...,
-        [20.1 for i in 1:length(m.b)]...] |> f32
+  ub = [[100.1 for i in 1:length(m.W)]...,
+        [100.1 for i in 1:length(m.b)]...] |> f32
   lb, ub
 end
 
@@ -357,7 +383,7 @@ function LTCCell(wiring, solver, sensealg, batchsize; state0r=Float32.((0.01)))
   p_ode = prob.p[n_in+1:end]
   p = Float32.(vcat(p_ode, prob.u0))
   # p = p_ode
-  initial_params() = p
+  initial_params = p
 
   LTCCell(wiring, net, sys, prob, stacked_prob, defs, param_names, input_idxs, u0_idxs, state0, solver, sensealg, initial_params, length(p), param_names)
 end
@@ -371,7 +397,7 @@ function LTCNet(wiring,solver,sensealg, batchsize)
   #p = DiffEqFlux.initial_params(cell)
   # p = vcat(DiffEqFlux.initial_params(cell), DiffEqFlux.initial_params(mapout))
   # @show length(p)
-  initial_params() = p
+  initial_params = p
 
   LTCNet(mapin,mapout,cell,cell.state0,initial_params,length(p))
 end
