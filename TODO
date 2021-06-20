@@ -1,26 +1,47 @@
-Fix time to start !!!
+Fix start-up time !!!
 @time res1,model = traintest(10)
 461.522541 seconds (743.05 M allocations: 45.819 GiB, 2.71% gc time, 2.66% compilation time)
-~ 9:30 for sine-flux_MTK.jl with new session
+~ 9:30 for sine-flux_MTK.jl with new session (< 10 sec for 10 iterations)
 type instabilities ???
+
+Move scaling Mapper from NCPNet to (Fast)Chain ?
+    keep the net "biological" (no mapping); for training where the input does not need any mapping (O2, chem input)?
+    Better performance with batched element-wise mapping (x.*W.+b with ndims(x) > 2) ?
 
 Finish Flux-compatibility and reset_state!
 
-Make use of wiring.n_out (y[end-out, :] inside model call) or better: let the user define what the output is ?
-map external input to destinations based on some user Dict. (not randomly) ?
 Remove ExternalInput and add vars to the most outer container system (Net() ATM) ?
-Move scaling Mapper from NCPNet to (Fast)Chain ?
+map external input to destinations based on some user's Dict. (not randomly) ?
+Make use of wiring.n_out (y[end-out, :] inside model call)
+    maybe better: let the user define what the output is. like for the input mapping
+
+Move for-loop to model function (m.(x), for xi in x) ?
+
 Remove obsolete dependencies
-Move for loop to model function (m.(x), for xi in x) ?
+
+Use whole input sequence for offline training ?
+    easier to handle irregularly sampled data (missing values) ?
+    solve from 0 to seq_length
+    callback for changing some param based on input(t) or registered external input function
+
 Change inits/bounds to physiological ranges (e.g. v from -100 to 100)
-How/where to check if solution stays in physiological ranges ?
-Callback to check physiological ranges ?
-Multi-objective optimization (e.g. target (train_y) and electrophysiological features of solution )
-Module based Nets/Systems ?
-"Big system" and EnsembleProblem for SDEs (solve Big system containing batchize sytems N times to get some means) ?
-How to train for input? What if I want to know how the input has to look like to get a system to produce a target output?
+How/where to check if solution stays in physiological ranges to speed up optimization?
+    Callback to check physiological ranges ?
+    after the whole solution got computed ?
+
+Use Unitful ?
+
+"Big system" and EnsembleProblem for SDEs
+    solve Big system containing batchize sytems N times to get some means ?
+
+How to train for input?
+    How does the input have to look like to get a system to produce a target output?
+
 How to add NN components to the MTK system (UDE) ??
-Use Unitful
+
+Module based Nets/Systems ?
+Multi-objective optimization
+    e.g. target (train_y) and electrophysiological features of solution
 
 Use package for parameters (get rid of e.g p_mapin = @view p[1 : mapin_pl])
 Use metadata for initial values and bounds. how to set and use custom metadata to symbolics vars ??
