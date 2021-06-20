@@ -41,7 +41,7 @@ using ModelingToolkit
 #export Functors
 #using ComponentArrays
 #using Parameters: @unpack
-using Tullio
+# using Tullio
 using Zygote
 using Zygote: @adjoint, Numeric, literal_getproperty, accum
 export Zygote
@@ -51,7 +51,7 @@ import Flux: reset!
 export DataLoader
 #export reset!
 # using ReverseDiff
-using ForwardDiff
+# using ForwardDiff
 using IterTools: ncycle
 export ncycle
 #using ZygoteRules
@@ -91,7 +91,7 @@ export get_bounds
 
 
 export Wiring, NCPWiring
-export LTCNet, Mapper, gNN, get_bounds, my_custom_train!
+export LTCNet, Mapper, my_custom_train!
 export reset!, reset_state!
 export initial_params, paramlength
 end

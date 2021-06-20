@@ -31,8 +31,8 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
   #anim = Animation()
 
   function lg(p,x,y, m)
-    # LTC.reset_state!(m,p)
-    reset!(m)
+    LTC.reset_state!(m,p)
+    # reset!(m)
 
     ŷb = GalacticOptim.Flux.Zygote.Buffer(rand(eltype(y[1]),1,1,1), size(y,1), size(y[1],1), size(y[1],2))
     for (i, xi) in enumerate(x)
@@ -80,7 +80,7 @@ function traintest(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=R
 
 end
 
-@time traintest(2000)
+@time traintest(10)
 # @time traintest(1000, QNDF())
 # @time traintest(1000, TRBDF2())
 # @time traintest(1000, AutoTsit5(Rosenbrock23()))

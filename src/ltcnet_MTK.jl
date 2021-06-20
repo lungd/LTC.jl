@@ -197,7 +197,7 @@ function LTCNet(wiring,solver,sensealg)
   LTCNet(mapin,mapout,cell,cell.state0,p,length(p))
 end
 
-Flux.@functor Mapper (p,)
+Flux.@functor LTCNet (p,)
 
 
 function (m::LTCNet{MI,MO,T,<:AbstractMatrix{T2}})(x::AbstractVecOrMat{T2}, p=m.p) where {MI,MO,T,T2}
