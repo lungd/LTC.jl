@@ -2,7 +2,7 @@ abstract type WiringT <: Function end
 
 struct Wiring <: WiringT
     n_in::Int
-    out::Int
+    n_out::Int
     n_sensory::Int
     n_inter::Int
     n_command::Int
@@ -29,7 +29,7 @@ end
 get_n_in(m::Wiring) = m.n_in
 get_n_total(m::Wiring) = m.n_total
 
-function Wiring(in::Int, out::Int;
+function FWiring(in::Int, out::Int;
                 n_sensory=2, n_inter=5, n_command=0, n_motor=1,
                 sensory_in=-1, rec_sensory=-1, sensory_out=-1,
                 rec_inter=-1, inter_out=-1,                       # inter_in = sensory_out
@@ -100,7 +100,7 @@ function NCPWiring(in::Int, out::Int;
   motor_s   = n_sensory + n_inter + n_command + 1
   n_total   = n_sensory + n_inter + n_command + n_motor
 
-  out = min(n_total, out)
+  # out = min(n_total, out)
 
   sens_mask = zeros(Float32, in, n_total)
   syn_mask  = zeros(Float32, n_total, n_total)

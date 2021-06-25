@@ -17,8 +17,40 @@ function ExternalInput(;name)
   ODESystem(eqs,t,vars,ps; defaults, name)
 end
 
+# @register Int64(t)
+# @register floor(x)
+# get_xt(val,t) = val[Int(floor(t))+1]
+# @register get_xt(val,x)
+
+function ExternalInput2(; name, seq_len)
+  vars = @variables x(t)
+  if seq_len > 1
+    ps = @parameters val[1:seq_len]
+    ps = vcat(ps...)
+  else
+    ps = @parameters val
+  end
+  eqs = Equation[
+    x ~ get_xt(val,t)
+  ]
+  val_defs = seq_len > 1 ? [val[i] => 13.37f0 for i in 1:length(val)] : [val => 13.37f0]
+  defaults = Dict(
+    #x => 0f0,
+    val_defs...,
+  )
+  ODESystem(eqs,t,vars,ps; defaults, name)
+end
+
+# value_vector = zeros(17,1)
+# f_fun(src,t) = value_vector[src,Int(floor(t))+1]
+# @register f_fun(t)
+
+
+sigs(x) = 1 / (1 + exp(-x))
 
 @register GalacticOptim.Flux.sigmoid(t)
+# ModelingToolkit.derivative(::typeof(GalacticOptim.Flux.sigmoid), (x,)) = sigs(x) * (1 - sigs(x))
+# ModelingToolkit.derivative(::typeof(GalacticOptim.Flux.sigmoid), (x,), ::Val{1}) = sigs(x) * (1 - sigs(x))#GalacticOptim.Flux.sigmoid(x) * (1 - GalacticOptim.Flux.sigmoid(x))
 
 function SigmoidSynapse(;name)
   vars = @variables I(t), v_pre(t), v_post(t)
@@ -104,15 +136,20 @@ end
 
 
 
-function Net(wiring; name)
-  @parameters t
+function Net(wiring; name, seq_len=1)
+  # @parameters f(t)
+
   vars = Num[]
   ps = Num[]
   eqs = Equation[]
   systems = ODESystem[]
 
   N = wiring.n_total
-  inputs = [ExternalInput(name=Symbol("x_$(i)_ExternalInput")) for i in 1:wiring.n_in]
+  inputs = seq_len > 1 ? [ExternalInput2(;name=Symbol("x_$(i)_ExternalInput"), seq_len) for i in 1:wiring.n_in] :
+    [ExternalInput(;name=Symbol("x_$(i)_ExternalInput")) for i in 1:wiring.n_in]
+  # inputs = [ExternalInput(name=Symbol("x_$(i)_ExternalInput")) for i in 1:wiring.n_in]
+  # inputs = [ExternalInput2(name=Symbol("x_$(i)_ExternalInput"), seq_len) for i in 1:wiring.n_in]
+
   systems = ODESystem[inputs...]
 
   n = 1
@@ -143,7 +180,8 @@ function Net(wiring; name)
       wiring.sens_mask[src,dst] == 0 && continue
       syn = SigmoidSynapse(;name=Symbol("$(n)_x_$(src)-->n$(dst)_SigmoidSynapse"))
       n += 1
-      push!(eqs, syn.v_pre ~ inputs[src].x)                         # TODO: param + callback for input ?
+      push!(eqs, syn.v_pre ~ inputs[src].x)
+      # push!(eqs, syn.v_pre ~ f_fun(src,t))
       push!(eqs, syn.v_post ~ neurons[dst].v)
       push!(systems, syn)
       I_comps_dst += syn.I

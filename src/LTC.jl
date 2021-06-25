@@ -12,13 +12,13 @@ using Juno
 # using MacroTools: @forward
 
 #using Flux
-
 using DiffEqBase
 using OrdinaryDiffEq
 using DiffEqSensitivity
 using DiffEqFlux
 using DiffEqFlux: initial_params, paramlength, FastChain, FastDense, sciml_train
 import DiffEqFlux: initial_params, paramlength, FastChain, FastDense, sciml_train
+import DifferentialEquations: PresetTimeCallback, PeriodicCallback
 export sciml_train
 using GalacticOptim
 
@@ -75,7 +75,8 @@ include("wiring.jl")
 
 # include("ltcnet.jl")
 
-include("ltcnet_MTK.jl")
+# include("ltcnet_MTK.jl")
+include("mtk_recur.jl")
 include("problem_generator.jl")
 
 #include("_ncp_1.jl")
@@ -91,7 +92,8 @@ export get_bounds
 
 
 export Wiring, NCPWiring
-export LTCNet, Mapper, my_custom_train!
+export MTKRecur, MTKCell, Net, Mapper, Broadcaster
+# export LTCNet, Mapper, Broadcaster, my_custom_train!
 export reset!, reset_state!
 export initial_params, paramlength
 end
