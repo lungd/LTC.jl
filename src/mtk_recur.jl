@@ -76,27 +76,24 @@ function (m::MTKCell{PROB,SOLVER,SENSEALG,V,<:AbstractMatrix{T}})(h, x::Abstract
   h = solve_ensemble(m,h,x,p_ode)
   h, h[end-m.out+1:end, :]
 end
+
+function prob_func(prob,i,repeat, h, x, p; tspan=(0f0,1f0))
+  xi = @view x[:,i]
+  u0i = @view h[:,i]
+  pp = vcat(xi,p)
+  remake(prob; tspan, p=pp, u0=u0i)
+end
+
+function output_func(sol,i, infs)
+  sol.retcode != :Success && return infs, false
+  sol[:, end], false
+end
+
 function solve_ensemble(m,h,x,p; tspan=(0f0,1f0))
 
-  function prob_func(prob,i,repeat)
-    xi = @view x[:,i]
-    u0i = @view h[:,i]
-    pp = vcat(xi,p)
-    remake(prob; tspan, p=pp, u0=u0i)
-  end
-
   infs = fill(Inf32, size(h,1))
-  function output_func(sol,i)
-    sol.retcode != :Success && return infs, false
-    sol[:, end], false
-  end
 
-  # _u0 = @view h[:,1]
-  # _p = vcat((@view x[:,1]), p)
-  # _prob = remake(m.prob, u0=_u0, p=_p)
-  # ensemble_prob = EnsembleProblem(_prob; prob_func, output_func, safetycopy=false) # TODO: safetycopy ???
-
-  ensemble_prob = EnsembleProblem(m.prob; prob_func, output_func, safetycopy=false) # TODO: safetycopy ???
+  ensemble_prob = EnsembleProblem(m.prob; prob_func=(prob,i,repeat)->prob_func(prob,i,repeat, h, x, p), output_func=(sol,i)->output_func(sol,i, infs), safetycopy=false) # TODO: safetycopy ???
   sol = solve(ensemble_prob, m.solver, EnsembleThreads(), trajectories=size(x,2),
               sensealg=m.sensealg, save_everystep=false, save_start=false) # TODO: saveat ?
   # @show size(sol)
