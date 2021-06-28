@@ -42,7 +42,7 @@ function MTKCell(in::Int, out::Int, net, solver, sensealg; seq_len=1)
 
   sys = structural_simplify(net)
   defs = ModelingToolkit.get_defaults(sys)
-  prob = ODEProblem(sys, defs, Float32.((0,1)), jac=true, sparse=true) # TODO: jac, sparse ???
+  prob = ODEProblem{true}(sys, defs, Float32.((0,1)), jac=true, sparse=true) # TODO: jac, sparse ???
 
   param_names = collect(parameters(sys))
   input_idxs = Int8[findfirst(x->contains(string(x), string(Symbol("x_$(i)_ExternalInput₊val"))), param_names) for i in 1:in]
@@ -84,7 +84,7 @@ function prob_func(prob,i,repeat, h, x, p; tspan=(0f0,1f0))
   remake(prob; tspan, p=pp, u0=u0i)
 end
 
-function output_func(sol,i, infs)
+function output_func(sol,i, infs)::Tuple{Vector{Float32},Bool}
   sol.retcode != :Success && return infs, false
   sol[:, end], false
 end
@@ -97,7 +97,8 @@ function solve_ensemble(m,h,x,p; tspan=(0f0,1f0))
   sol = solve(ensemble_prob, m.solver, EnsembleThreads(), trajectories=size(x,2),
               sensealg=m.sensealg, save_everystep=false, save_start=false) # TODO: saveat ?
   # @show size(sol)
-  Array(sol)
+  # Array(sol)
+  sol[:,:]
 end
 
 Base.show(io::IO, m::MTKCell) = print(io, "MTKCell(", m.in, ",", m.out, ")")
