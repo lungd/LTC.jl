@@ -9,6 +9,7 @@ using GalacticOptim
 using Juno
 using Cthulhu
 using Profile
+using BlackBoxOptim
 
 function generate_data()
     in_features = 2
@@ -16,7 +17,7 @@ function generate_data()
     N = 48
     data_x = [sin.(range(0,stop=3π,length=N)), cos.(range(0,stop=3π,length=N))]
     data_x = [reshape([Float32(data_x[1][i]),Float32(data_x[2][i])],2,1) for i in 1:N]# |> f32
-    data_y = [reshape([Float32(y)],1) for y in sin.(range(0,stop=6π,length=N))]# |> f32
+    data_y = [reshape([Float32(y)],1,1) for y in sin.(range(0,stop=6π,length=N))]# |> f32
     DataLoader((data_x, data_y), batchsize=N)
 end
 
@@ -66,6 +67,7 @@ model = DiffEqFlux.FastChain(LTC.Mapper(wiring.n_in),
 
 train_dl = data(n)
 opt = GalacticOptim.Flux.Optimiser(ClipValue(0.5), ADAM(0.01))
+# opt = BBO()
 AD = GalacticOptim.AutoZygote()
 
 x1,y1 = first(train_dl)
@@ -80,6 +82,8 @@ LTC.reset_state!(recurmtk, p_mtk)
 
 @code_warntype LTC.solve_ensemble(recurmtk.cell, h_mtk, x1[1], p_mtk)
 @descend_code_warntype LTC.solve_ensemble(recurmtk.cell, h_mtk, x1[1], p_mtk)
+
+@descend_code_warntype LTC.optimize(recurmtk, loss, cbg, opt, AD, train_dl)
 
 # p = initial_params(model)
 # lb, ub = get_bounds(model)
