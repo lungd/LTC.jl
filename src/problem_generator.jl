@@ -48,7 +48,7 @@ end
 
 sigs(x) = 1 / (1 + exp(-x))
 
-@register GalacticOptim.Flux.sigmoid(t)
+@register Flux.sigmoid(t)
 # ModelingToolkit.derivative(::typeof(GalacticOptim.Flux.sigmoid), (x,)) = sigs(x) * (1 - sigs(x))
 # ModelingToolkit.derivative(::typeof(GalacticOptim.Flux.sigmoid), (x,), ::Val{1}) = sigs(x) * (1 - sigs(x))#GalacticOptim.Flux.sigmoid(x) * (1 - GalacticOptim.Flux.sigmoid(x))
 

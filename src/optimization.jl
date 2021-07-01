@@ -10,7 +10,8 @@ function optimize(model, loss, cb, opt, AD, train_dl)
   @show length(ub)
 
   optfun = GalacticOptim.OptimizationFunction((θ, p, x, y) -> loss(θ,x,y, model), AD)
-  optprob = GalacticOptim.OptimizationProblem(optfun, pp, lb=lb, ub=ub,
+  optfunc = GalacticOptim.instantiate_function(optfun, pp, AD, nothing)
+  optprob = GalacticOptim.OptimizationProblem(optfunc, pp, lb=lb, ub=ub,
                                 #grad = true, hess = true, sparse = true,
                                 #parallel=ModelingToolkit.MultithreadedForm()
                                 )

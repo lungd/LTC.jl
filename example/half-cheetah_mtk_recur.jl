@@ -16,16 +16,18 @@ function train_cheetah(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacv
   function loss(p,x,y,m)
     # ŷ = m.(x, [p])
 
-    ŷb = GalacticOptim.Flux.Zygote.Buffer(rand(eltype(y[1]),1,1,1), size(y,1), size(y[1])...)
+    LTC.reset_state!(m, p)
+
+    ŷb = Flux.Zygote.Buffer(y[1], size(y,1), size(y[1])...)
     for (i, xi) in enumerate(x)
       ŷi = m(xi, p)
-      ŷb[i,:,:] = ŷi
       Inf32 ∈ ŷi && return Inf32, Flux.unstack(copy(ŷb),1), y # TODO: what if a layer after MTKRecur can handle Infs?
+      ŷb[i,:,:] = ŷi
     end
     ŷ = Flux.unstack(copy(ŷb),1)
 
-    LTC.reset_state!(m, p)
-    return mean(GalacticOptim.Flux.Losses.mse.(ŷ,y)), ŷ, y
+    # mean(sum.(abs2, (ŷ .- y))), ŷ, y
+    return mean(Flux.Losses.mse.(ŷ,y, agg=mean)), ŷ, y
   end
 
   cbg = function (p,l,pred,y;doplot=true)
@@ -40,8 +42,8 @@ function train_cheetah(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacv
     return false
   end
 
-  batchsize=10
-  seq_len=20
+  batchsize=20
+  seq_len=10
   train_dl, test_dl, valid_dl = get_dl(batchsize=batchsize, seq_len=seq_len)
 
   wiring = LTC.NCPWiring(17,17;
@@ -58,7 +60,7 @@ function train_cheetah(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacv
                                LTC.Mapper(wiring.n_out),
                                )
 
-  opt = Flux.Optimiser(ClipValue(0.70), ExpDecay(0.01, 0.1, 40, 1e-4), ADAM())
+  opt = Flux.Optimiser(ClipValue(1.00), ExpDecay(0.01, 0.1, 200, 1e-4), ADAM())
   # opt = Optim.LBFGS()
   # opt = BBO()
   # opt = ParticleSwarm(;lower=lb, upper=ub)

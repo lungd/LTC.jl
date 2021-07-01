@@ -10,10 +10,8 @@ function RecurMTK(cell; seq_len=1)
 end
 function (m::RecurMTK)(x, p)
   m.state, y = m.cell(m.state, x, p)
-  y
+  return y
 end
-
-
 Base.show(io::IO, m::RecurMTK) = print(io, "RecurMTK(", m.cell, ")")
 initial_params(m::RecurMTK) = m.p
 paramlength(m::RecurMTK) = m.paramlength
@@ -40,9 +38,9 @@ struct MTKCell{PROB,SOLVER,SENSEALG,V,S}
 end
 function MTKCell(in::Int, out::Int, net, solver, sensealg; seq_len=1)
 
-  sys = structural_simplify(net)
+  sys = structural_simplify(net) # TODO: simpl in example file?
   defs = ModelingToolkit.get_defaults(sys)
-  prob = ODEProblem{true}(sys, defs, Float32.((0,1)), jac=true, sparse=true) # TODO: jac, sparse ???
+  prob = ODEProblem(sys, defs, Float32.((0,1))) # TODO: jac, sparse ???
 
   param_names = collect(parameters(sys))
   input_idxs = Int8[findfirst(x->contains(string(x), string(Symbol("x_$(i)_ExternalInput₊val"))), param_names) for i in 1:in]
@@ -66,39 +64,47 @@ function MTKCell(in::Int, out::Int, net, solver, sensealg; seq_len=1)
   @show input_idxs
 
   #MTKCell(in, out, net, sys, prob, defs, param_names, input_idxs, u0_idxs, solver, sensealg, p, length(p), string.(param_names), state0)
-  MTKCell(in, out, prob, solver, sensealg, p, length(p), string.(param_names), state0)
+  MTKCell{typeof(prob),typeof(solver),typeof(sensealg),typeof(p),typeof(state0)}(in, out, prob, solver, sensealg, p, length(p), string.(param_names), state0)
 end
-function (m::MTKCell{PROB,SOLVER,SENSEALG,V,<:AbstractMatrix{T}})(h, x::AbstractVecOrMat{T}, p) where {PROB,SOLVER,SENSEALG,V,T}
+function (m::MTKCell{PROB,SOLVER,SENSEALG,V,Matrix{T}})(h::Matrix{T}, x::Matrix{T}, p) where {PROB,SOLVER,SENSEALG,V,T}
   # size(h) == (N,1) at the first MTKCell invocation. Need to duplicate batchsize times
-  h = repeat(h, 1, size(x,2)-size(h,2)+1)
-  p_ode_l = size(p,1) - size(h,1)
+  num_reps = size(x)[2]-size(h)[2]+1
+  h = repeat(h, 1, num_reps)#::Matrix{T}
+  p_ode_l = size(p)[1] - size(h)[1]
   p_ode = @view p[1:p_ode_l]
   h = solve_ensemble(m,h,x,p_ode)
   h, h[end-m.out+1:end, :]
 end
 
-function prob_func(prob,i,repeat, h, x, p; tspan=(0f0,1f0))
-  xi = @view x[:,i]
-  u0i = @view h[:,i]
-  pp = vcat(xi,p)
-  remake(prob; tspan, p=pp, u0=u0i)
-end
+#function solve_ensemble(m,h,x,p, tspan=(0f0,1f0))#::Matrix{Float32}
+function solve_ensemble(m,h::Matrix{T},x,p, tspan=(0f0,1f0))::Matrix{T} where T
 
-function output_func(sol,i, infs)::Tuple{Vector{Float32},Bool}
-  sol.retcode != :Success && return infs, false
-  sol[:, end], false
-end
+  # infs = fill(Inf32, size(h)[1])
 
-function solve_ensemble(m,h,x,p; tspan=(0f0,1f0))
+  function prob_func(prob,i,repeat)
+    xi = @view x[:,i]
+    u0i = @view h[:,i]
+    pp = vcat(xi,p)
+    remake(prob; tspan, p=pp, u0=u0i)
+  end
+  function output_func(sol,i)::Tuple{Vector{T},Bool}
+    sol.retcode != :Success && return h[:,1], false
+    sol[:, end], false
+  end
 
-  infs = fill(Inf32, size(h,1))
 
-  ensemble_prob = EnsembleProblem(m.prob; prob_func=(prob,i,repeat)->prob_func(prob,i,repeat, h, x, p), output_func=(sol,i)->output_func(sol,i, infs), safetycopy=false) # TODO: safetycopy ???
-  sol = solve(ensemble_prob, m.solver, EnsembleThreads(), trajectories=size(x,2),
-              sensealg=m.sensealg, save_everystep=false, save_start=false) # TODO: saveat ?
+  # solver = Tsit5()
+  solver = VCABM()
+  sensealg = InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true))
+  # sensealg = ZygoteAdjoint()
+  prob = m.prob
+  batchsize = size(x)[2]
+  ensemble_prob = EnsembleProblem(prob; prob_func, output_func, safetycopy=false) # TODO: safetycopy ???
+  sol = solve(ensemble_prob, solver, EnsembleThreads(), trajectories=batchsize,
+              sensealg=sensealg, save_everystep=false, save_start=false) # TODO: saveat ?
   # @show size(sol)
   # Array(sol)
-  sol[:,:]
+  sol[:,:]::Matrix{T}
 end
 
 Base.show(io::IO, m::MTKCell) = print(io, "MTKCell(", m.in, ",", m.out, ")")
@@ -107,9 +113,9 @@ paramlength(m::MTKCell) = m.paramlength
 Flux.@functor MTKCell (p,)
 
 
-@adjoint function Broadcast.broadcasted(f::RecurMTK, args...)
-  Zygote.∇map(__context__, f, args...)
-end
+# @adjoint function Broadcast.broadcasted(f::RecurMTK, args...)
+#   Zygote.∇map(__context__, f, args...)
+# end
 
 reset!(m::RecurMTK, p=m.p) = (m.state = reshape(p[end-length(m.cell.state0)+1:end],:,1))
 
@@ -164,7 +170,7 @@ function Mapper(in::Integer)
   p = vcat(W,b)
   Mapper(W, b, p, length(p))
 end
-#function (m::Mapper)(x::Array{<:AbstractFloat,N}, p=m.p) where N
+# function (m::Mapper{<:AbstractVector{T}})(x::Matrix{T}, p=m.p) where T
 function (m::Mapper)(x, p=m.p)
   Wl = size(m.W,1)
   W = @view p[1 : Wl]

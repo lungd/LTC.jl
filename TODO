@@ -5,6 +5,20 @@ Fix start-up time !!!
 type instabilities ???
 
 
+* Flux compatibility (Flux.Chain, Conv, etc.)
+* Add additional states + input/output mapping + ORDER afer strucural simplification
+* Metadata for initial_values / bounds ?
+* Check if ExternalInput components are needed or if the system shall define the vars/params
+* Big system ?
+* Check how to handle irregularly sampled data. Easier with big system + callback?
+* NN components (universal differential equations with MTK)
+* Unitful / mix components with + components without units ?
+
+RL cartpole
+
+
+
+
 
 
 Zygote up (ChainRules)
