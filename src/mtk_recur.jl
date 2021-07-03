@@ -93,15 +93,10 @@ function solve_ensemble(m,h::Matrix{T},x,p, tspan=(0f0,1f0))::Matrix{T} where T
   end
 
 
-  # solver = Tsit5()
-  solver = VCABM()
-  sensealg = InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true))
-  # sensealg = ZygoteAdjoint()
-  prob = m.prob
   batchsize = size(x)[2]
-  ensemble_prob = EnsembleProblem(prob; prob_func, output_func, safetycopy=false) # TODO: safetycopy ???
-  sol = solve(ensemble_prob, solver, EnsembleThreads(), trajectories=batchsize,
-              sensealg=sensealg, save_everystep=false, save_start=false) # TODO: saveat ?
+  ensemble_prob = EnsembleProblem(m.prob; prob_func, output_func, safetycopy=false) # TODO: safetycopy ???
+  sol = solve(ensemble_prob, m.solver, EnsembleThreads(), trajectories=batchsize,
+              sensealg=m.sensealg, save_everystep=false, save_start=false) # TODO: saveat ?
   # @show size(sol)
   # Array(sol)
   sol[:,:]::Matrix{T}
