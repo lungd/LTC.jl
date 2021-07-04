@@ -1,4 +1,6 @@
-mutable struct RecurMTK{T,V,S}
+# abstract type MTKLayer <: Function end
+
+mutable struct RecurMTK{T,V,S}# <:MTKLayer
   cell::T
   p::V
   paramlength::Int
@@ -8,14 +10,16 @@ function RecurMTK(cell; seq_len=1)
   p = DiffEqFlux.initial_params(cell)
   RecurMTK(cell, p, length(p), cell.state0)
 end
-function (m::RecurMTK)(x, p)
+function (m::RecurMTK)(x, p=m.p)
   m.state, y = m.cell(m.state, x, p)
   return y
 end
 Base.show(io::IO, m::RecurMTK) = print(io, "RecurMTK(", m.cell, ")")
 initial_params(m::RecurMTK) = m.p
 paramlength(m::RecurMTK) = m.paramlength
-Flux.@functor RecurMTK (p,)
+
+# Flux.@functor RecurMTK (p,)
+# Flux.trainable(m::RecurMTK) = (m.p,)
 
 
 # struct MTKCell{NET,SYS,PROB,DEFS,KS,I,U0,SOLVER,SENSEALG,V,S}
@@ -66,26 +70,26 @@ function MTKCell(in::Int, out::Int, net, solver, sensealg; seq_len=1)
   #MTKCell(in, out, net, sys, prob, defs, param_names, input_idxs, u0_idxs, solver, sensealg, p, length(p), string.(param_names), state0)
   MTKCell{typeof(prob),typeof(solver),typeof(sensealg),typeof(p),typeof(state0)}(in, out, prob, solver, sensealg, p, length(p), string.(param_names), state0)
 end
-function (m::MTKCell{PROB,SOLVER,SENSEALG,V,Matrix{T}})(h::Matrix{T}, x::Matrix{T}, p) where {PROB,SOLVER,SENSEALG,V,T}
+function (m::MTKCell{PROB,SOLVER,SENSEALG,V,Matrix{T}})(h::Matrix{T}, xs::Matrix{T}, p) where {PROB,SOLVER,SENSEALG,V,T}
   # size(h) == (N,1) at the first MTKCell invocation. Need to duplicate batchsize times
-  num_reps = size(x)[2]-size(h)[2]+1
+  num_reps = size(xs)[2]-size(h)[2]+1
   h = repeat(h, 1, num_reps)#::Matrix{T}
   p_ode_l = size(p)[1] - size(h)[1]
   p_ode = @view p[1:p_ode_l]
-  h = solve_ensemble(m,h,x,p_ode)
+  h = solve_ensemble(m,h,xs,p_ode)
   h, h[end-m.out+1:end, :]
 end
 
 #function solve_ensemble(m,h,x,p, tspan=(0f0,1f0))#::Matrix{Float32}
-function solve_ensemble(m,h::Matrix{T},x,p, tspan=(0f0,1f0))::Matrix{T} where T
+function solve_ensemble(m, u0s::Matrix{T}, xs, p_ode, tspan=(0f0,1f0))::Matrix{T} where T
 
   # infs = fill(Inf32, size(h)[1])
 
   function prob_func(prob,i,repeat)
-    xi = @view x[:,i]
-    u0i = @view h[:,i]
-    pp = vcat(xi,p)
-    remake(prob; tspan, p=pp, u0=u0i)
+    x = @view xs[:,i]
+    u0 = @view u0s[:,i]
+    p = vcat(x, p_ode)
+    remake(prob; tspan, p, u0)
   end
   function output_func(sol,i)::Tuple{Vector{T},Bool}
     sol.retcode != :Success && return h[:,1], false
@@ -93,7 +97,7 @@ function solve_ensemble(m,h::Matrix{T},x,p, tspan=(0f0,1f0))::Matrix{T} where T
   end
 
 
-  batchsize = size(x)[2]
+  batchsize = size(xs)[2]
   ensemble_prob = EnsembleProblem(m.prob; prob_func, output_func, safetycopy=false) # TODO: safetycopy ???
   sol = solve(ensemble_prob, m.solver, EnsembleThreads(), trajectories=batchsize,
               sensealg=m.sensealg, save_everystep=false, save_start=false) # TODO: saveat ?
@@ -105,7 +109,9 @@ end
 Base.show(io::IO, m::MTKCell) = print(io, "MTKCell(", m.in, ",", m.out, ")")
 initial_params(m::MTKCell) = m.p
 paramlength(m::MTKCell) = m.paramlength
-Flux.@functor MTKCell (p,)
+
+# Flux.@functor MTKCell #(p,)
+# Flux.trainable(m::MTKCell) = (m.p,)
 
 
 # @adjoint function Broadcast.broadcasted(f::RecurMTK, args...)
@@ -114,7 +120,7 @@ Flux.@functor MTKCell (p,)
 
 reset!(m::RecurMTK, p=m.p) = (m.state = reshape(p[end-length(m.cell.state0)+1:end],:,1))
 
-function reset_state!(m::RecurMTK, p)
+function reset_state!(m::RecurMTK, p=m.p)
   # @show size(m.cell.state0)
   # @show size(m.state)
   trained_state0 = p[end-size(m.cell.state0,1)+1:end]
@@ -130,7 +136,7 @@ function reset_state!(m::DiffEqFlux.FastChain, p)
     start_idx += pl
   end
 end
-# reset_state!(m::Flux.Chain) = map(l -> reset_state!(l), m.layers)
+reset_state!(m::Flux.Chain) = map(l -> reset_state!(l), m.layers)
 reset_state!(m,p) = nothing
 
 
@@ -146,12 +152,14 @@ function Broadcaster(model)
   paramlength = length(p)
   Broadcaster(model,p,paramlength)
 end
-(m::Broadcaster)(x,p) = m.model.(x,[p])
+(m::Broadcaster)(xs, p) = [m.model(x, p) for x in xs] # mapfoldl(x -> m.model(x, p), vcat, xs)
 
 Base.show(io::IO, m::Broadcaster) = print(io, "Broadcaster(", m.model, ")")
 initial_params(m::Broadcaster) = m.p
 paramlength(m::Broadcaster) = m.paramlength
-Flux.@functor Broadcaster (model,)
+
+# Flux.@functor Broadcaster #(model,)
+Flux.trainable(m::Broadcaster) = (m.model,)
 
 struct Mapper{V}
   W::V
@@ -175,10 +183,29 @@ end
 Base.show(io::IO, m::Mapper) = print(io, "Mapper(", length(m.W), ")")
 initial_params(m::Mapper) = m.p
 paramlength(m::Mapper) = m.paramlength
-Flux.@functor Mapper (p,)
+
+# Flux.@functor Mapper #(p,)
+Flux.trainable(m::Mapper) = (m.p,)
+
+
+struct FluxLayerWrapper{FL,P,RE}
+  layer::FL
+  p::P
+  re::RE
+  paramlength::Int
+end
+function FluxLayerWrapper(layer)
+  p, re = Flux.destructure(layer)
+  FluxLayerWrapper(layer, p, re, length(p))
+end
+(m::FluxLayerWrapper)(x, p) = m.re(p)(x)
+Base.show(io::IO, m::FluxLayerWrapper) = print(io, "FluxLayerWrapper(", layer, ")")
+initial_params(m::FluxLayerWrapper) = m.p
+paramlength(m::FluxLayerWrapper) = m.paramlength
 
 
 get_bounds(m::Broadcaster) = get_bounds(m.model)
+get_bounds(m::FluxLayerWrapper) = get_bounds(m.layer)
 
 function get_bounds(m::DiffEqFlux.FastChain)
   lb = vcat([get_bounds(layer)[1] for layer in m.layers]...)
@@ -187,17 +214,25 @@ function get_bounds(m::DiffEqFlux.FastChain)
 end
 
 function get_bounds(m::DiffEqFlux.FastDense)
-  lb = vcat([-10.1 for _ in 1:m.out*m.in],
-            [-10.1 for _ in 1:m.out]) |> f32
-  ub = vcat([10.1 for _ in 1:m.out*m.in],
-            [10.1 for _ in 1:m.out]) |> f32
+  lb = vcat(fill(-10.1, m.out*m.in),
+            fill(-10.1, m.out)) |> f32
+  ub = vcat(fill(10.1, m.out*m.in),
+            fill(10.1, m.out)) |> f32
   lb, ub
 end
+function get_bounds(m::Flux.Dense)
+  lb = vcat(fill(-10.1, length(m.weight)),
+            fill(-10.1, length(m.bias))) |> f32
+  ub = vcat(fill(10.1, length(m.weight)),
+            fill(10.1, length(m.bias))) |> f32
+  lb, ub
+end
+
 function get_bounds(m::Mapper)
-  lb = vcat([-10.1 for _ in 1:length(m.W)],
-            [-10.1 for _ in 1:length(m.b)]) |> f32
-  ub = vcat([10.1 for _ in 1:length(m.W)],
-            [10.1 for _ in 1:length(m.b)]) |> f32
+  lb = vcat(fill(-10.1, length(m.W)),
+            fill(-10.1, length(m.b))) |> f32
+  ub = vcat(fill(-10.1, length(m.W)),
+            fill(-10.1, length(m.b))) |> f32
   lb, ub
 end
 

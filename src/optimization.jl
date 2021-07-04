@@ -20,6 +20,7 @@ end
 
 
 function optimize(model::Flux.Chain, loss, cb, opt, AD, train_dl)
+  pp, re = Flux.destructure(model)
   lb, ub = get_bounds(model)
 
   @show length(train_dl)
@@ -28,8 +29,9 @@ function optimize(model::Flux.Chain, loss, cb, opt, AD, train_dl)
   @show length(pp)
   @show length(lb)
   @show length(ub)
+  @show sum(length.(pp))
 
-  optfun = GalacticOptim.OptimizationFunction((θ, p, x, y) -> loss(p,re, x,y), AD)
+  optfun = GalacticOptim.OptimizationFunction((θ, p, x, y) -> loss(θ,re, x,y), AD)
   optfunc = GalacticOptim.instantiate_function(optfun, pp, AD, nothing)
   optprob = GalacticOptim.OptimizationProblem(optfunc, pp, lb=lb, ub=ub,
                                 #grad = true, hess = true, sparse = true,
