@@ -14,18 +14,23 @@ include("half_cheetah_data_loader.jl")
 
 function train_cheetah(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true));)
 
-  function loss(p,x,y,m)
+  function loss_flux_chain(p, re, x, y)
     # ŷ = m.(x, [p])
 
-    LTC.reset_state!(m, p)
+    # LTC.reset_state!(m, p)
+    m = re(p)
 
-    ŷb = Flux.Zygote.Buffer(y[1], size(y,1), size(y[1])...)
-    for (i, xi) in enumerate(x)
-      ŷi = m(xi, p)
-      Inf32 ∈ ŷi && return Inf32, Flux.unstack(copy(ŷb),1), y # TODO: what if a layer after MTKRecur can handle Infs?
-      ŷb[i,:,:] = ŷi
+    ŷb = Flux.Zygote.Buffer([y[1]], size(y,1))#, size(y[1])...)
+    #for (i, xi) in enumerate(x)
+    for i in 1:size(x,1)
+      xi = x[i]
+      ŷi = m(xi)
+      Inf32 ∈ ŷi && return Inf32, copy(ŷb), y # TODO: what if a layer after MTKRecur can handle Infs?
+      #ŷb[i,:,:] = ŷi
+      ŷb[i] = ŷi
     end
-    ŷ = Flux.unstack(copy(ŷb),1)
+    #ŷ = Flux.unstack(copy(ŷb),1)
+    ŷ = copy(ŷb)
 
     # mean(sum.(abs2, (ŷ .- y))), ŷ, y
     return mean(Flux.Losses.mse.(ŷ,y, agg=mean)), ŷ, y
@@ -56,8 +61,8 @@ function train_cheetah(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacv
 
   net = LTC.Net(wiring; name=:net)
 
-  model = DiffEqFlux.FastChain(LTC.FluxLayerWrapper(Flux.Dense(wiring.n_in, 5, tanh)),
-                     LTC.FluxLayerWrapper(Flux.Dense(5, wiring.n_in)),
+  model = Flux.Chain(Flux.Dense(wiring.n_in, 5, tanh),
+                     Flux.Dense(5, wiring.n_in),
                      LTC.RecurMTK(LTC.MTKCell(wiring.n_in, wiring.n_out, net, solver, sensealg)),
                      LTC.Mapper(wiring.n_out),
                      )
@@ -69,7 +74,7 @@ function train_cheetah(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacv
   # opt = Fminbox(GradientDescent())
   AD = GalacticOptim.AutoZygote()
   # AD = GalacticOptim.AutoModelingToolkit()
-  LTC.optimize(model, loss, cbg, opt, AD, ncycle(train_dl,n)), model
+  LTC.optimize(model, loss_flux_chain, cbg, opt, AD, ncycle(train_dl,n)), model
 end
 
 @time res1,model = train_cheetah(100)

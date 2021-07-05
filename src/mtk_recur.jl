@@ -8,18 +8,26 @@ mutable struct RecurMTK{T,V,S}# <:MTKLayer
 end
 function RecurMTK(cell; seq_len=1)
   p = DiffEqFlux.initial_params(cell)
+  # RecurMTK(cell, p, length(p), () -> cell.state0())
   RecurMTK(cell, p, length(p), cell.state0)
 end
 function (m::RecurMTK)(x, p=m.p)
   m.state, y = m.cell(m.state, x, p)
   return y
 end
+# function (m::RecurMTK)(x)
+#   # state, y = m.cell(m.state(), x)
+#   state, y = m.cell(m.state, x)
+#   # m.state = () -> state
+#   m.state = state
+#   return y
+# end
 Base.show(io::IO, m::RecurMTK) = print(io, "RecurMTK(", m.cell, ")")
 initial_params(m::RecurMTK) = m.p
 paramlength(m::RecurMTK) = m.paramlength
 
-# Flux.@functor RecurMTK (p,)
-# Flux.trainable(m::RecurMTK) = (m.p,)
+Flux.@functor RecurMTK (p,)#(cell,)
+Flux.trainable(m::RecurMTK) = (m.p,)#Flux.trainable(m.cell)
 
 
 # struct MTKCell{NET,SYS,PROB,DEFS,KS,I,U0,SOLVER,SENSEALG,V,S}
@@ -52,6 +60,7 @@ function MTKCell(in::Int, out::Int, net, solver, sensealg; seq_len=1)
 
   u0_idxs = Int8[]
 
+  # state0 = () -> reshape(prob.u0, :, 1)
   state0 = reshape(prob.u0, :, 1)
 
 
@@ -61,6 +70,7 @@ function MTKCell(in::Int, out::Int, net, solver, sensealg; seq_len=1)
 
   @show param_names
   @show prob.u0
+  # @show size(state0())
   @show size(state0)
   @show prob.f.syms
   @show length(prob.p)
@@ -70,7 +80,7 @@ function MTKCell(in::Int, out::Int, net, solver, sensealg; seq_len=1)
   #MTKCell(in, out, net, sys, prob, defs, param_names, input_idxs, u0_idxs, solver, sensealg, p, length(p), string.(param_names), state0)
   MTKCell{typeof(prob),typeof(solver),typeof(sensealg),typeof(p),typeof(state0)}(in, out, prob, solver, sensealg, p, length(p), string.(param_names), state0)
 end
-function (m::MTKCell{PROB,SOLVER,SENSEALG,V,Matrix{T}})(h::Matrix{T}, xs::Matrix{T}, p) where {PROB,SOLVER,SENSEALG,V,T}
+function (m::MTKCell)(h::Matrix{T}, xs::Matrix{T}, p) where {PROB,SOLVER,SENSEALG,V,T}
   # size(h) == (N,1) at the first MTKCell invocation. Need to duplicate batchsize times
   num_reps = size(xs)[2]-size(h)[2]+1
   h = repeat(h, 1, num_reps)#::Matrix{T}
@@ -110,11 +120,42 @@ Base.show(io::IO, m::MTKCell) = print(io, "MTKCell(", m.in, ",", m.out, ")")
 initial_params(m::MTKCell) = m.p
 paramlength(m::MTKCell) = m.paramlength
 
-# Flux.@functor MTKCell #(p,)
-# Flux.trainable(m::MTKCell) = (m.p,)
+Flux.@functor MTKCell (p,)
+Flux.trainable(m::MTKCell) = (m.p,)
 
 
+function destructure(m; cache = IdDict())
+  xs = Zygote.Buffer([])
+  Flux.fmap(m) do x
+    if x isa AbstractArray
+      push!(xs, x)
+    else
+      cache[x] = x
+    end
+    return x
+  end
+  return vcat(vec.(copy(xs))...), p -> _restructure(m, p, cache = cache)
+end
+
+function _restructure(m, xs; cache = IdDict())
+  i = 0
+  Flux.fmap(m) do x
+    x isa AbstractArray || return cache[x]
+    x = reshape(xs[i.+(1:length(x))], size(x))
+    i += length(x)
+    return x
+  end
+end
+
+
+
+# @adjoint function Broadcast.broadcasted(f, x)
+#   Zygote.∇map(__context__, f, x)
+# end
 # @adjoint function Broadcast.broadcasted(f::RecurMTK, args...)
+#   Zygote.∇map(__context__, f, args...)
+# end
+# @adjoint function Broadcast.broadcasted(f::Flux.Chain, args...)
 #   Zygote.∇map(__context__, f, args...)
 # end
 
@@ -123,6 +164,8 @@ reset!(m::RecurMTK, p=m.p) = (m.state = reshape(p[end-length(m.cell.state0)+1:en
 function reset_state!(m::RecurMTK, p=m.p)
   # @show size(m.cell.state0)
   # @show size(m.state)
+  # trained_state0 = p[end-size(m.cell.state0(),1)+1:end]
+  # m.state = () -> reshape(trained_state0, :, 1)
   trained_state0 = p[end-size(m.cell.state0,1)+1:end]
   m.state = reshape(trained_state0, :, 1)
 end
@@ -184,7 +227,7 @@ Base.show(io::IO, m::Mapper) = print(io, "Mapper(", length(m.W), ")")
 initial_params(m::Mapper) = m.p
 paramlength(m::Mapper) = m.paramlength
 
-# Flux.@functor Mapper #(p,)
+Flux.@functor Mapper (p,)
 Flux.trainable(m::Mapper) = (m.p,)
 
 
@@ -207,7 +250,7 @@ paramlength(m::FluxLayerWrapper) = m.paramlength
 get_bounds(m::Broadcaster) = get_bounds(m.model)
 get_bounds(m::FluxLayerWrapper) = get_bounds(m.layer)
 
-function get_bounds(m::DiffEqFlux.FastChain)
+function get_bounds(m::Union{Flux.Chain, DiffEqFlux.FastChain})
   lb = vcat([get_bounds(layer)[1] for layer in m.layers]...)
   ub = vcat([get_bounds(layer)[2] for layer in m.layers]...)
   lb, ub
@@ -263,6 +306,8 @@ function get_bounds(m::RecurMTK)
       push!(cell_ub, 1)
     end
   end
+  # push!(cell_lb, [-2 for i in 1:length(m.cell.state0())]...)
+  # push!(cell_ub, [2 for i in 1:length(m.cell.state0())]...)
   push!(cell_lb, [-2 for i in 1:length(m.cell.state0)]...)
   push!(cell_ub, [2 for i in 1:length(m.cell.state0)]...)
   cell_lb, cell_ub

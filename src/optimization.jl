@@ -20,7 +20,7 @@ end
 
 
 function optimize(model::Flux.Chain, loss, cb, opt, AD, train_dl)
-  pp, re = Flux.destructure(model)
+  pp, re = LTC.destructure(model)
   lb, ub = get_bounds(model)
 
   @show length(train_dl)
