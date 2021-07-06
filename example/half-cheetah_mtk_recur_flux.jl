@@ -17,8 +17,8 @@ function train_cheetah(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacv
   function loss_flux_chain(p, re, x, y)
     # ŷ = m.(x, [p])
 
-    # LTC.reset_state!(m, p)
     m = re(p)
+    LTC.reset_state!(m, p) # use initial conditions from current params
 
     ŷb = Flux.Zygote.Buffer([y[1]], size(y,1))#, size(y[1])...)
     #for (i, xi) in enumerate(x)

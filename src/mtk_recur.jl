@@ -124,6 +124,9 @@ Flux.@functor MTKCell (p,)
 Flux.trainable(m::MTKCell) = (m.p,)
 
 
+# paramlength(m::Union{Flux.Dense,Flux.Conv,Flux.Dropout,Flux.Maxout}) = sum(length, Flux.params(m)) # Mutating arrays not supported
+paramlength(m::Flux.Dense) = length(m.weight) + length(m.bias)
+
 function destructure(m; cache = IdDict())
   xs = Zygote.Buffer([])
   Flux.fmap(m) do x
@@ -170,7 +173,7 @@ function reset_state!(m::RecurMTK, p=m.p)
   m.state = reshape(trained_state0, :, 1)
 end
 
-function reset_state!(m::DiffEqFlux.FastChain, p)
+function reset_state!(m::Union{Flux.Chain, DiffEqFlux.FastChain}, p)
   start_idx = 1
   for l in m.layers
     pl = paramlength(l)
@@ -179,7 +182,7 @@ function reset_state!(m::DiffEqFlux.FastChain, p)
     start_idx += pl
   end
 end
-reset_state!(m::Flux.Chain) = map(l -> reset_state!(l), m.layers)
+# reset_state!(m::Flux.Chain) = map(l -> reset_state!(l), m.layers)
 reset_state!(m,p) = nothing
 
 
