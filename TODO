@@ -5,8 +5,13 @@ Fix start-up time !!!
 type instabilities ???
 
 
-* Flux compatibility (Flux.Chain, Conv, etc.)
+    * Flux compatibility (Flux.Chain, Conv, etc.)
+
 * Add additional states + input/output mapping + ORDER afer strucural simplification
+    - Replace ExternalInput by Pin
+    - Define Input/Output pins
+    - create solution with output-pin states only OR filter output-pins from all states
+
 * Metadata for initial_values / bounds ?
 * Check if ExternalInput components are needed or if the system shall define the vars/params
 * Big system ?
