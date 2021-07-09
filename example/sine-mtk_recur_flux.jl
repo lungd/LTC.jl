@@ -12,6 +12,7 @@ using Profile
 using BlackBoxOptim
 #using PProf
 using ProfileView
+using ModelingToolkit
 
 function generate_data()
     in_features = 2
@@ -29,23 +30,6 @@ end
 
 function train_sine(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
 
-  function loss_flux_chain(p, re, x, y)
-    m = re(p)
-    LTC.reset_state!(m, p) # use initial conditions from current params
-
-    ŷb = Flux.Zygote.Buffer([y[1]], size(y,1))
-    for i in 1:size(x,1)
-      xi = x[i]
-      ŷi = m(xi)
-      Inf32 ∈ ŷi && return Inf32, copy(ŷb), y
-      ŷb[i] = ŷi
-    end
-    ŷ = copy(ŷb)
-
-    # mean(sum.(abs2, (ŷ .- y))), ŷ, y
-    return mean(Flux.Losses.mse.(ŷ,y, agg=mean)), ŷ, y
-  end
-
   cbg = function (p,l,pred,y;doplot=false)
     display(l)
     if doplot
@@ -60,10 +44,11 @@ function train_sine(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=
   batchsize = 1
 
   wiring = LTC.FWiring(2,1)
-  net = LTC.Net(wiring; name=:net)
+  net = LTC.Net(wiring, name=:net)
+  sys = ModelingToolkit.structural_simplify(net)
 
   model = DiffEqFlux.Chain(Flux.Dense(wiring.n_in,wiring.n_in,tanh), LTC.Mapper(wiring.n_in),
-                               LTC.RecurMTK(LTC.MTKCell(wiring.n_in, wiring.n_out, net, solver, sensealg)),
+                               LTC.RecurMTK(LTC.MTKCell(wiring.n_in, wiring.n_out, sys, solver, sensealg)),
                                LTC.Mapper(wiring.n_out),
                                )
 
@@ -76,7 +61,7 @@ function train_sine(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=
   AD = GalacticOptim.AutoZygote()
   # AD = GalacticOptim.AutoModelingToolkit()
 
-  LTC.optimize(model, loss_flux_chain, cbg, opt, AD, train_dl)
+  LTC.optimize(model, LTC.loss_seq, cbg, opt, AD, train_dl)
 
 end
 

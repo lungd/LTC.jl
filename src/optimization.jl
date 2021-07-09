@@ -9,7 +9,7 @@ function optimize(model, loss, cb, opt, AD, train_dl)
   @show length(lb)
   @show length(ub)
 
-  optfun = GalacticOptim.OptimizationFunction((θ, p, x, y) -> loss(θ,x,y, model), AD)
+  optfun = GalacticOptim.OptimizationFunction((θ,p,x,y) -> loss(θ,model,x,y), AD)
   optfunc = GalacticOptim.instantiate_function(optfun, pp, AD, nothing)
   optprob = GalacticOptim.OptimizationProblem(optfunc, pp, lb=lb, ub=ub,
                                 #grad = true, hess = true, sparse = true,
@@ -31,7 +31,7 @@ function optimize(model::Flux.Chain, loss, cb, opt, AD, train_dl)
   @show length(ub)
   @show sum(length.(pp))
 
-  optfun = GalacticOptim.OptimizationFunction((θ, p, x, y) -> loss(θ,re, x,y), AD)
+  optfun = GalacticOptim.OptimizationFunction((θ,p,x,y) -> loss(θ,re,x,y), AD)
   optfunc = GalacticOptim.instantiate_function(optfun, pp, AD, nothing)
   optprob = GalacticOptim.OptimizationProblem(optfunc, pp, lb=lb, ub=ub,
                                 #grad = true, hess = true, sparse = true,

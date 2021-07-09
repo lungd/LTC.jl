@@ -7,28 +7,12 @@ using OrdinaryDiffEq
 using DiffEqFlux
 using GalacticOptim
 using BlackBoxOptim
+using ModelingToolkit
 
 include("half_cheetah_data_loader.jl")
 
 
 function train_cheetah(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true));)
-
-  function loss(p,x,y,m)
-    # ŷ = m.(x, [p])
-
-    LTC.reset_state!(m, p)
-
-    ŷb = Flux.Zygote.Buffer(y[1], size(y,1), size(y[1])...)
-    for (i, xi) in enumerate(x)
-      ŷi = m(xi, p)
-      Inf32 ∈ ŷi && return Inf32, Flux.unstack(copy(ŷb),1), y # TODO: what if a layer after MTKRecur can handle Infs?
-      ŷb[i,:,:] = ŷi
-    end
-    ŷ = Flux.unstack(copy(ŷb),1)
-
-    # mean(sum.(abs2, (ŷ .- y))), ŷ, y
-    return mean(Flux.Losses.mse.(ŷ,y, agg=mean)), ŷ, y
-  end
 
   cbg = function (p,l,pred,y;doplot=true)
     display(l)
@@ -53,10 +37,11 @@ function train_cheetah(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacv
     command_in=0, rec_command=4, command_motor=4,                   # command_in = inter_out
     motor_in=0, rec_motor=2)
 
-  net = LTC.Net(wiring; name=:net)
+  net = LTC.Net(wiring, name=:net)
+  sys = ModelingToolkit.structural_simplify(net)
 
   model = DiffEqFlux.FastChain(LTC.Mapper(wiring.n_in),
-                               LTC.RecurMTK(LTC.MTKCell(wiring.n_in, wiring.n_out, net, solver, sensealg)),
+                               LTC.RecurMTK(LTC.MTKCell(wiring.n_in, wiring.n_out, sys, solver, sensealg)),
                                LTC.Mapper(wiring.n_out),
                                )
 
@@ -67,7 +52,7 @@ function train_cheetah(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacv
   # opt = Fminbox(GradientDescent())
   AD = GalacticOptim.AutoZygote()
   # AD = GalacticOptim.AutoModelingToolkit()
-  LTC.optimize(model, loss, cbg, opt, AD, ncycle(train_dl,n)), model
+  LTC.optimize(model, LTC.loss_seq, cbg, opt, AD, ncycle(train_dl,n)), model
 end
 
 @time res1,model = train_cheetah(100)
