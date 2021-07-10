@@ -46,10 +46,12 @@ function LeakChannel(;name)
 end
 
 function Neuron(; name)
-  @variables v(t)=rand_uniform(Float32, 0.001, 0.2) [lower=0.0001f0, upper=0.3f0]
-  @variables I_comps(t)
+  @variables begin
+    (v(t) = rand_uniform(Float32, 0.001, 0.2)), [lower=0.0001f0, upper=0.3f0]
+    (I_comps(t))
+  end
   ps = @parameters begin
-    Cm=rand_uniform(Float32, 1, 3), [lower = 0.8f0, upper = 5f0]
+    Cm = rand_uniform(Float32, 1, 3), [lower = 0.8f0, upper = 5f0]
   end
   @named leak = LeakChannel()
   eqs = [
