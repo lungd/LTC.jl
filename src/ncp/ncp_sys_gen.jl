@@ -13,7 +13,7 @@ function InPin(;name)
 end
 
 function OutPin(;name)
-  vars = @variables x(t)=1111.0
+  vars = @variables x(t)=1111.0f0
   ODESystem(Equation[],t,vars,[]; name)
 end
 
@@ -71,7 +71,7 @@ function Net(wiring; name)
   N = wiring.n_total
   inputs = [InPin(;name=Symbol("x$(i)_InPin")) for i in 1:wiring.n_in]
   outputs = [OutPin(;name=Symbol("x$(i)_OutPin")) for i in 1:wiring.n_out]
-  systems = ODESystem[inputs...]
+  push!(systems, inputs...)
 
   n = 1
   neurons = ODESystem[]

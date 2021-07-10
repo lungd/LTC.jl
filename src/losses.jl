@@ -18,8 +18,7 @@ end
 function loss_seq(p, m::DiffEqFlux.FastChain, x, y)
   # ŷ = m.(x, [p])
 
-  # TODO: mutating array not supported
-  # LTC.reset_state!(m, p)
+  LTC.reset_state!(m, p)
 
   ŷb = Flux.Zygote.Buffer([y[1]], size(y,1))
   for i in 1:size(x,1)

@@ -83,7 +83,7 @@ function solve_ensemble(m, u0s, xs, p_ode, tspan=(0f0,1f0))#::Matrix{T} where T
   batchsize = size(xs)[2]
   infs = fill(Inf32, size(u0s)[1])
   outpins = m.outpins
-  out = Flux.Zygote.Buffer(u0s, m.out, batchsize)
+  out = Flux.Zygote.Buffer(u0s, m.out, batchsize) # TODO: fill out with INFs ?
 
   function prob_func(prob,i,repeat)
     x = @view xs[:,i]
@@ -120,10 +120,7 @@ Flux.trainable(m::MTKCell) = (m.p,)
 
 reset!(m::RecurMTK, p=m.p) = (m.state = reshape(p[end-length(m.cell.state0)+1:end],:,1))
 
-function reset_state!(m::RecurMTK, p=m.p)
-  trained_state0 = p[end-size(m.cell.state0,1)+1:end]
-  m.state = reshape(trained_state0, :, 1)
-end
+reset_state!(m::RecurMTK, p=m.p) = (m.state = reshape(p[end-size(m.cell.state0,1)+1:end], :, 1))
 
 function get_bounds(m::RecurMTK)
   cell_lb = Float32[]
