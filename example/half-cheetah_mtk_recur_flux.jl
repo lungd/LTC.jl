@@ -40,10 +40,11 @@ function train_cheetah(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacv
 
   net = LTC.Net(wiring, name=:net)
   sys = ModelingToolkit.structural_simplify(net)
+  # return net, sys
 
   model = Flux.Chain(Flux.Dense(wiring.n_in, 5, tanh),
                      Flux.Dense(5, wiring.n_in),
-                     LTC.RecurMTK(LTC.MTKCell(wiring.n_in, wiring.n_out, sys, solver, sensealg)),
+                     LTC.RecurMTK(LTC.MTKCell(wiring.n_in, wiring.n_out, net, sys, solver, sensealg)),
                      LTC.Mapper(wiring.n_out),
                      )
 
@@ -56,6 +57,8 @@ function train_cheetah(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacv
   # AD = GalacticOptim.AutoModelingToolkit()
   LTC.optimize(model, LTC.loss_seq, cbg, opt, AD, ncycle(train_dl,n)), model
 end
+
+# net, sys = train_cheetah(1)
 
 @time res1,model = train_cheetah(100)
 

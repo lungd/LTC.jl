@@ -27,7 +27,7 @@ function train_cheetah(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacv
   end
 
   batchsize=20
-  seq_len=10
+  seq_len=30
   train_dl, test_dl, valid_dl = get_dl(batchsize=batchsize, seq_len=seq_len)
 
   wiring = LTC.NCPWiring(17,17;
@@ -41,7 +41,7 @@ function train_cheetah(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacv
   sys = ModelingToolkit.structural_simplify(net)
 
   model = DiffEqFlux.FastChain(LTC.Mapper(wiring.n_in),
-                               LTC.RecurMTK(LTC.MTKCell(wiring.n_in, wiring.n_out, sys, solver, sensealg)),
+                               LTC.RecurMTK(LTC.MTKCell(wiring.n_in, wiring.n_out, net, sys, solver, sensealg)),
                                LTC.Mapper(wiring.n_out),
                                )
 

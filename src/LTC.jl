@@ -28,6 +28,7 @@ export ncycle
 
 
 rand_uniform(TYPE, lb,ub,dims...) = TYPE.(rand(Uniform(lb,ub),dims...))
+rand_uniform(TYPE, lb,ub) = TYPE.(rand(Uniform(lb,ub),1))[1]
 
 #Zygote.@nograd rand_uniform, reshape
 
@@ -35,6 +36,7 @@ include("layers.jl")
 include("mtk_recur.jl")
 include("optimization.jl")
 include("losses.jl")
+include("variables.jl")
 
 include("ncp/ncp_sys_gen.jl")
 include("ncp/wiring.jl")
