@@ -54,6 +54,7 @@ function MTKCell(in::Int, out::Int, net, sys, solver, sensealg; seq_len=1)
 
 
   p_ode = prob.p[in+1:end]
+  @show prob.u0
   p = Float32.(vcat(p_ode, prob.u0))
   # p = p_ode
 
@@ -64,6 +65,7 @@ function MTKCell(in::Int, out::Int, net, sys, solver, sensealg; seq_len=1)
   @show length(prob.p)
   @show length(prob.p[in+1:end])
   @show input_idxs
+  @show outpins
 
   #MTKCell(in, out, net, sys, prob, defs, param_names, input_idxs, u0_idxs, solver, sensealg, p, length(p), string.(param_names), state0)
   MTKCell(in, out, net, sys, prob, solver, sensealg, p, length(p), string.(param_names), outpins, state0)
@@ -81,9 +83,15 @@ end
 function solve_ensemble(m, u0s, xs, p_ode, tspan=(0f0,1f0))#::Matrix{T} where T
 
   batchsize = size(xs)[2]
+  # @show batchsize
   infs = fill(Inf32, size(u0s)[1])
   outpins = m.outpins
-  out = Flux.Zygote.Buffer(u0s, m.out, batchsize) # TODO: fill out with INFs ?
+  # outbuf = rand(eltype(u0s), m.out, batchsize)
+  # outbuf = Flux.Zygote.Buffer(u0s, m.out, batchsize)
+  # @show size(out)
+
+  # saved_values = DiffEqCallbacks.SavedValues(Float32, Matrix{Float32})
+  # cb = DiffEqCallbacks.SavingCallback((u,t,integrator)->(vcat(integrator.sol[outpins[i].x, end] for i in 1:m.out), saved_values))
 
   function prob_func(prob,i,repeat)
     x = @view xs[:,i]
@@ -91,22 +99,46 @@ function solve_ensemble(m, u0s, xs, p_ode, tspan=(0f0,1f0))#::Matrix{T} where T
     p = vcat(x, p_ode)
     remake(prob; tspan, p, u0)
   end
+
   function output_func(sol,i)#::Tuple{Vector{T},Bool}
     # sol.retcode != :Success && return h[:,1], false
     sol.retcode != :Success && return infs, false
-    for j in 1:size(out,1)
-      out[j,i] = sol[outpins[j].x, end]
-    end
+    # outbuf[:,i] .= [sol[outpins[j].x, end] for j in 1:m.out]
+    # out = Flux.Zygote.Buffer(u0s[:,1], m.out) # TODO: fill out with INFs ?
+    # for j in 1:size(outbuf,1)
+    #   # outpin = indexof(outpins[j].x, )
+    #   # @show size(sol[outpins[j].x, end])
+    #   # @show size(sol[outpins[j].x])
+      # o = sol[outpins[j].x, end]
+    #   # @show o
+      # outbuf[j,i] = o
+    #   # out[j,i] = sol[end-size(sol,1), end]
+    #   # @show size(sol[outpins[j].x, end])
+    #   # out[j,i] = sol(idxs=outpins[j].x)[end]
+    #
+    # end
+    # @show size(sol[:, end])
+    # vcat(sol[:, end], copy(out)), false
+    # vcat(sol[:, end], out), false
     sol[:, end], false
   end
 
   ensemble_prob = EnsembleProblem(m.prob; prob_func, output_func, safetycopy=false) # TODO: safetycopy ???
   sol = solve(ensemble_prob, m.solver, EnsembleThreads(), trajectories=batchsize,
               sensealg=m.sensealg, save_everystep=false, save_start=false) # TODO: saveat ?
+
   # @show size(sol)
   # Array(sol)
 
-  return sol[:,:], copy(out)
+
+  # return sol[:,:], reshape(sol[:,:][end,:], 1,:)#copy(out)
+  # @show size(sol[:,:])
+  # o = copy(out)
+  # @show size(o)
+  s = Array(sol)
+  # s, reshape(s[1:m.wiring,:], 1,:)
+  s, s[end:end,:]
+  # sol[:,:], copy(outbuf)
   # sol#[:,:]::Matrix{T}
 end
 

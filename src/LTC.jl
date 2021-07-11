@@ -25,10 +25,13 @@ import Flux: reset!
 export DataLoader
 using IterTools: ncycle
 export ncycle
+using DiffEqCallbacks
 
+using NNlib
+export NNlib
 
 rand_uniform(TYPE, lb,ub,dims...) = TYPE.(rand(Uniform(lb,ub),dims...))
-rand_uniform(TYPE, lb,ub) = TYPE.(rand(Uniform(lb,ub),1))[1]
+rand_uniform(TYPE, lb,ub) = rand_uniform(TYPE, lb,ub,1)[1]
 
 #Zygote.@nograd rand_uniform, reshape
 
@@ -38,8 +41,9 @@ include("optimization.jl")
 include("losses.jl")
 include("variables.jl")
 
-include("ncp/ncp_sys_gen.jl")
-include("ncp/wiring.jl")
+include("systems/systems.jl")
+include("systems/ncp/ncp_sys_gen.jl")
+include("systems/ncp/wiring.jl")
 
 
 export MTKRecur, MTKCell, Mapper, Broadcaster, get_bounds

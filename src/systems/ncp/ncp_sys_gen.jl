@@ -2,33 +2,20 @@ using LTC
 using ModelingToolkit
 using LTC: rand_uniform
 
-@parameters t
-D = Differential(t)
 
-function InPin(;name)
-  vars = @variables x(t)
-  ps = @parameters val=13.37f0
-  eqs = [x ~ val]
-  ODESystem(eqs,t,vars,ps; name)
-end
 
-function OutPin(;name)
-  vars = @variables x(t)=1111.0f0
-  ODESystem(Equation[],t,vars,[]; name)
-end
-
-@register Flux.sigmoid(t)
+@register NNlib.sigmoid(t)
 
 function SigmoidSynapse(;name)
   vars = @variables I(t), v_pre(t), v_post(t)
   ps = @parameters begin
     μ = rand_uniform(Float32, 0.3, 0.8), [lower=0.1f0, upper=1.0f0]
     σ = rand_uniform(Float32, 3, 8), [lower=1f0, upper=10f0]
-    G = rand_uniform(Float32, 0.001, 1), [lower=0.0001f0, upper=1.1f0]
-    E = rand_uniform(Float32, -0.3, 0.3), [lower=-1f0, upper=1f0]
+    G = rand_uniform(Float32, 0.001, 1), [lower=0.000001f0, upper=1.1f0]
+    E = rand_uniform(Float32, -0.3, 0.3), [lower=-1.1f0, upper=1.1f0]
   end
   eqs = [
-    I ~ G * GalacticOptim.Flux.sigmoid((v_pre - μ) * σ) * (v_post - E)
+    I ~ G * NNlib.sigmoid((v_pre - μ) * σ) * (v_post - E)
   ]
   ODESystem(eqs, t, vars, ps; name)
 end
@@ -36,8 +23,8 @@ end
 function LeakChannel(;name)
   vars = @variables I(t), v(t)
   ps = @parameters begin
-    G = rand_uniform(Float32, 0.001, 1), [lower = 0.0001f0, upper = 1.1f0]
-    E = rand_uniform(Float32, -0.3, 0.3), [lower = -1f0, upper = 1f0]
+    G = rand_uniform(Float32, 0.001, 1), [lower = 0.000001f0, upper = 1.1f0]
+    E = rand_uniform(Float32, -0.3, 0.3), [lower = -1.1f0, upper = 1.1f0]
   end
   eqs = [
     I ~ G * (v - E)
@@ -47,11 +34,11 @@ end
 
 function Neuron(; name)
   @variables begin
-    (v(t) = rand_uniform(Float32, 0.001, 0.2)), [lower=0.0001f0, upper=0.3f0]
+    (v(t) = rand_uniform(Float32, 0.001, 0.2)), [lower=-2f0, upper=2f0]
     (I_comps(t))
   end
   ps = @parameters begin
-    Cm = rand_uniform(Float32, 1, 3), [lower = 0.8f0, upper = 5f0]
+    Cm = rand_uniform(Float32, 1, 3), [lower = 0.8f0, upper = 4f0]
   end
   @named leak = LeakChannel()
   eqs = [
@@ -69,8 +56,7 @@ function Net(wiring; name)
   systems = ODESystem[]
 
   N = wiring.n_total
-  inputs = [InPin(;name=Symbol("x$(i)_InPin")) for i in 1:wiring.n_in]
-  outputs = [OutPin(;name=Symbol("x$(i)_OutPin")) for i in 1:wiring.n_out]
+  inputs, outputs = create_pins(wiring.n_in, wiring.n_out)
   push!(systems, inputs...)
 
   n = 1
@@ -119,7 +105,7 @@ function Net(wiring; name)
 
   # connect output pins with n_out last neurons
   for i in 1:wiring.n_out
-    push!(eqs, outputs[i].x ~ neurons[end-wiring.n_out-i].v)
+    push!(eqs, outputs[i].x ~ neurons[end-wiring.n_out+i].v)
   end
   push!(systems, outputs...)
 
