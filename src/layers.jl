@@ -31,7 +31,7 @@ struct Broadcaster{M,P}
   paramlength::Int
 end
 function Broadcaster(model)
-  p = DiffEqFlux.initial_params(model)
+  p = initial_params(model)
   paramlength = length(p)
   Broadcaster(model,p,paramlength)
 end
@@ -89,7 +89,7 @@ paramlength(m::FluxLayerWrapper) = m.paramlength
 
 reset_state!(m,p) = nothing
 
-function reset_state!(m::Union{Flux.Chain, DiffEqFlux.FastChain}, p)
+function reset_state!(m::Union{Flux.Chain, FastChain}, p)
   start_idx = 1
   for l in m.layers
     pl = paramlength(l)
@@ -111,13 +111,13 @@ function get_bounds(m::Mapper)
   lb, ub
 end
 
-function get_bounds(m::Union{Flux.Chain, DiffEqFlux.FastChain})
+function get_bounds(m::Union{Flux.Chain, FastChain})
   lb = vcat([get_bounds(layer)[1] for layer in m.layers]...)
   ub = vcat([get_bounds(layer)[2] for layer in m.layers]...)
   lb, ub
 end
 
-function get_bounds(m::DiffEqFlux.FastDense)
+function get_bounds(m::FastDense)
   lb = vcat(fill(-10.1, m.out*m.in),
             fill(-10.1, m.out)) |> f32
   ub = vcat(fill(10.1, m.out*m.in),

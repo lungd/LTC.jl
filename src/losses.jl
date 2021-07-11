@@ -15,7 +15,7 @@ function loss_seq(p, re, x, y)
   return mean(Flux.Losses.mse.(ŷ,y, agg=mean)), ŷ, y
 end
 
-function loss_seq(p, m::DiffEqFlux.FastChain, x, y)
+function loss_seq(p, m::FastChain, x, y)
   # ŷ = m.(x, [p])
 
   LTC.reset_state!(m, p)

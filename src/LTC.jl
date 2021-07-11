@@ -3,28 +3,14 @@ module LTC
 using Reexport
 
 using Distributions
-import NPZ: npzread
-export npzread
-using Juno
 using DiffEqBase
 using OrdinaryDiffEq
 using DiffEqSensitivity
-using DiffEqFlux
-using DiffEqFlux: initial_params, paramlength, FastChain, FastDense, sciml_train
 import DiffEqFlux: initial_params, paramlength, FastChain, FastDense, sciml_train
-import DifferentialEquations: PresetTimeCallback, PeriodicCallback
-export sciml_train
 using GalacticOptim
 using ModelingToolkit
-using Zygote
-using Zygote: @adjoint, Numeric, literal_getproperty, accum
-export Zygote
-using Flux: reset!, Zeros, Data.DataLoader
-using Flux: Data.DataLoader
-import Flux: reset!
-export DataLoader
-using IterTools: ncycle
-export ncycle
+using Flux
+using IterTools
 
 
 rand_uniform(TYPE, lb,ub,dims...) = TYPE.(rand(Uniform(lb,ub),dims...))
