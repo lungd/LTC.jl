@@ -62,11 +62,14 @@ function train_sine(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=
   AD = GalacticOptim.AutoZygote()
   # AD = GalacticOptim.AutoModelingToolkit()
 
+  # return model
+
   LTC.optimize(model, LTC.loss_seq, cbg, opt, AD, train_dl)
 
 end
 
-@time train_sine(100)
+@time model = train_sine(100)
+# @time model = train_sine(100, Tsit5(), InterpolatingAdjoint(autojacvec=DiffEqSensitivity.EnzymeVJP()))
 # @time traintest(1000, QNDF())
 # @time traintest(1000, TRBDF2())
 # @time traintest(1000, AutoTsit5(Rosenbrock23()))

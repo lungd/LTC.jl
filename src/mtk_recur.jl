@@ -1,6 +1,4 @@
-# abstract type MTKLayer <: Function end
-
-mutable struct RecurMTK{T,V,S}# <:MTKLayer
+mutable struct RecurMTK{T,V,S}
   cell::T
   p::V
   paramlength::Int
@@ -18,11 +16,10 @@ Base.show(io::IO, m::RecurMTK) = print(io, "RecurMTK(", m.cell, ")")
 initial_params(m::RecurMTK) = m.p
 paramlength(m::RecurMTK) = m.paramlength
 
-Flux.@functor RecurMTK (p,)#(cell,)
-Flux.trainable(m::RecurMTK) = (m.p,)#Flux.trainable(m.cell)
+Flux.@functor RecurMTK (p,)
+Flux.trainable(m::RecurMTK) = (m.p,)
 
 
-# struct MTKCell{NET,SYS,PROB,DEFS,KS,I,U0,SOLVER,SENSEALG,V,S}
 struct MTKCell{NET,SYS,PROB,SOLVER,SENSEALG,V,OP,S}
   in::Int
   out::Int
@@ -40,18 +37,15 @@ end
 function MTKCell(in::Int, out::Int, net, sys, solver, sensealg; seq_len=1)
 
   defs = ModelingToolkit.get_defaults(sys)
-  prob = ODEProblem(sys, defs, Float32.((0,1))) # TODO: jac, sparse ???
+	prob = ODEProblem(sys, defs, Float32.((0,1))) # TODO: jac, sparse ???
 
   param_names = collect(parameters(sys))
-  input_idxs = Int8[findfirst(x->contains(string(x), string(Symbol("x$(i)_InPin₊val"))), param_names) for i in 1:in]
-  param_names = param_names[in+1:end]
+  input_idxs = Int8[findfirst(x->contains(string(x), string(Symbol("x$(i)_InPin"))), param_names) for i in 1:in]
+	param_names = param_names[in+1:end]
 
   outpins = [getproperty(net, Symbol("x", i, "_OutPin"), namespace=false) for i in 1:out]
 
-  u0_idxs = Int8[]
-
   state0 = reshape(prob.u0, :, 1)
-
 
   p_ode = prob.p[in+1:end]
   @show prob.u0
@@ -67,79 +61,66 @@ function MTKCell(in::Int, out::Int, net, sys, solver, sensealg; seq_len=1)
   @show input_idxs
   @show outpins
 
-  #MTKCell(in, out, net, sys, prob, defs, param_names, input_idxs, u0_idxs, solver, sensealg, p, length(p), string.(param_names), state0)
   MTKCell(in, out, net, sys, prob, solver, sensealg, p, length(p), string.(param_names), outpins, state0)
 end
-function (m::MTKCell)(h, xs::Matrix{T}, p) where {PROB,SOLVER,SENSEALG,V,T}
+function (m::MTKCell)(h, xs::AbstractVecOrMat{T}, p) where {PROB,SOLVER,SENSEALG,V,T}
   # size(h) == (N,1) at the first MTKCell invocation. Need to duplicate batchsize times
-  num_reps = size(xs)[2]-size(h)[2]+1
-  hr = repeat(h, 1, num_reps)#::Matrix{T}
+  num_reps = size(xs,2)-size(h,2)+1
+  hr = repeat(h, 1, num_reps)
   p_ode_l = size(p)[1] - size(hr)[1]
-  p_ode = @view p[1:p_ode_l]
+  p_ode = p[1:p_ode_l]
   solve_ensemble(m,hr,xs,p_ode)
 end
 
-#function solve_ensemble(m,h,x,p, tspan=(0f0,1f0))#::Matrix{Float32}
-function solve_ensemble(m, u0s, xs, p_ode, tspan=(0f0,1f0))#::Matrix{T} where T
+function solve_ensemble(m, u0s, xs, p_ode, tspan=(0f0,1f0))
 
-  batchsize = size(xs)[2]
+  batchsize = size(xs,2)
   # @show batchsize
   infs = fill(Inf32, size(u0s)[1])
   outpins = m.outpins
-  # outbuf = rand(eltype(u0s), m.out, batchsize)
-  # outbuf = Flux.Zygote.Buffer(u0s, m.out, batchsize)
-  # @show size(out)
-
-  # saved_values = DiffEqCallbacks.SavedValues(Float32, Matrix{Float32})
-  # cb = DiffEqCallbacks.SavingCallback((u,t,integrator)->(vcat(integrator.sol[outpins[i].x, end] for i in 1:m.out), saved_values))
 
   function prob_func(prob,i,repeat)
-    x = @view xs[:,i]
-    u0 = @view u0s[:,i]
+    x = xs[:,i]
+    u0 = u0s[:,i]
     p = vcat(x, p_ode)
     remake(prob; tspan, p, u0)
   end
 
-  function output_func(sol,i)#::Tuple{Vector{T},Bool}
-    # sol.retcode != :Success && return h[:,1], false
+  function output_func(sol,i)
     sol.retcode != :Success && return infs, false
-    # outbuf[:,i] .= [sol[outpins[j].x, end] for j in 1:m.out]
-    # out = Flux.Zygote.Buffer(u0s[:,1], m.out) # TODO: fill out with INFs ?
-    # for j in 1:size(outbuf,1)
-    #   # outpin = indexof(outpins[j].x, )
-    #   # @show size(sol[outpins[j].x, end])
-    #   # @show size(sol[outpins[j].x])
-      # o = sol[outpins[j].x, end]
-    #   # @show o
-      # outbuf[j,i] = o
-    #   # out[j,i] = sol[end-size(sol,1), end]
-    #   # @show size(sol[outpins[j].x, end])
-    #   # out[j,i] = sol(idxs=outpins[j].x)[end]
-    #
-    # end
-    # @show size(sol[:, end])
-    # vcat(sol[:, end], copy(out)), false
-    # vcat(sol[:, end], out), false
-    sol[:, end], false
+		sol[:,end], false
   end
 
   ensemble_prob = EnsembleProblem(m.prob; prob_func, output_func, safetycopy=false) # TODO: safetycopy ???
   sol = solve(ensemble_prob, m.solver, EnsembleThreads(), trajectories=batchsize,
-              sensealg=m.sensealg, save_everystep=false, save_start=false) # TODO: saveat ?
+              sensealg=m.sensealg, save_everystep=false, save_start=false,
+              dense = false,
+	  # save_on = false,
+	  # save_end = true,
+	  #alias_u0 = true,
+	  # calck = false
+		) # TODO: saveat ?
 
-  # @show size(sol)
-  # Array(sol)
+	s = Array(sol)
+  return s, s[end-m.out+1:end, :]
 
 
-  # return sol[:,:], reshape(sol[:,:][end,:], 1,:)#copy(out)
-  # @show size(sol[:,:])
-  # o = copy(out)
-  # @show size(o)
-  s = Array(sol)
-  # s, reshape(s[1:m.wiring,:], 1,:)
-  s, s[end:end,:]
-  # sol[:,:], copy(outbuf)
-  # sol#[:,:]::Matrix{T}
+	# outb = Flux.Zygote.Buffer(u0s, m.out, batchsize)
+	# for i in 1:m.out
+	# 	for j in 1:batchsize
+	# 		# @show outpins[j].x               # x1_OutPin₊x(t)
+	# 		# @show sol[j][outpins[j].x, end]  # e.g., -0.06400018f0
+	# 		# obs = observed_var_sol(m.sys, sol[j], outpins[j].x)
+	# 		obs = sol[j][outpins[i].x,1]
+	# 		# @show obs
+	# 		# obs = sol[j][outpins[j].x]
+	# 		outb[i,j] = obs
+	# 		# @show sol[j][outpins[j].x]
+	# 		# outb[i,j] = sol[j][outpins[j].x][end]
+	# 	end
+	# end
+	# out = copy(outb)
+	# return Array(sol)[:,end,:], out
 end
 
 Base.show(io::IO, m::MTKCell) = print(io, "MTKCell(", m.in, ",", m.out, ")")
@@ -161,39 +142,11 @@ function get_bounds(m::RecurMTK)
   params = collect(parameters(m.cell.sys))[m.cell.in+1:end]
   states = collect(ModelingToolkit.states(m.cell.sys))
   for v in vcat(params,states)
+		contains(string(v), "OutPin") && continue
     lower = hasmetadata(v, VariableLowerBound) ? getmetadata(v, VariableLowerBound) : -Inf
     upper = hasmetadata(v, VariableUpperBound) ? getmetadata(v, VariableUpperBound) : Inf
     push!(cell_lb, lower)
     push!(cell_ub, upper)
   end
   return cell_lb, cell_ub
-
-  # for pn in m.cell.param_names
-  #
-  #   if contains(pn, "Cm")
-  #     push!(cell_lb, 0.8)
-  #     push!(cell_ub, 4)
-  #   elseif contains(pn, "leak₊G")
-  #     push!(cell_lb, 1e-5)
-  #     push!(cell_ub, 1.1)
-  #   elseif contains(pn, "leak₊E")
-  #     push!(cell_lb, -1.1)
-  #     push!(cell_ub, 1.1)
-  #   elseif contains(pn, "SigmoidSynapse₊G")
-  #     push!(cell_lb, 1e-5)
-  #     push!(cell_ub, 1.1)
-  #   elseif contains(pn, "SigmoidSynapse₊E")
-  #     push!(cell_lb, -1.1)
-  #     push!(cell_ub, 1.1)
-  #   elseif contains(pn, "SigmoidSynapse₊σ")
-  #     push!(cell_lb, 1)
-  #     push!(cell_ub, 10)
-  #   elseif contains(pn, "SigmoidSynapse₊μ")
-  #     push!(cell_lb, 0.1)
-  #     push!(cell_ub, 1)
-  #   end
-  # end
-  # push!(cell_lb, [-2 for i in 1:length(m.cell.state0)]...)
-  # push!(cell_ub, [2 for i in 1:length(m.cell.state0)]...)
-  # cell_lb, cell_ub
 end
