@@ -32,3 +32,16 @@ function loss_seq(p, m::DiffEqFlux.FastChain, x, y)
   # mean(sum.(abs2, (ŷ .- y))), ŷ, y
   return mean(Flux.Losses.mse.(ŷ,y, agg=mean)), ŷ, y
 end
+
+
+function loss_full_seq(p, m::DiffEqFlux.FastChain, x, y)
+  # ŷ = m.(x, [p])
+
+  LTC.reset_state!(m, p)
+
+  ŷ = m(x, p)
+  Inf32 ∈ ŷ && return Inf32, ŷ, y
+
+  # mean(sum.(abs2, (ŷ .- y))), ŷ, y
+  return mean(Flux.Losses.mse.(ŷ,y, agg=mean)), ŷ, y
+end

@@ -67,13 +67,21 @@ function MTKCell(in::Int, out::Int, net, sys, solver, sensealg; seq_len=1)
 
   MTKCell(in, out, net, sys, prob, solver, sensealg, p, length(p), string.(param_names), infs, outpins, state0)
 end
-function (m::MTKCell)(h, xs::AbstractVecOrMat{T}, p) where {PROB,SOLVER,SENSEALG,V,T}
+function (m::MTKCell)(h, xs::AbstractVector{T}, p) where {PROB,SOLVER,SENSEALG,V,T}
   # size(h) == (N,1) at the first MTKCell invocation. Need to duplicate batchsize times
   num_reps = size(xs,2)-size(h,2)+1
   hr = repeat(h, 1, num_reps)
   p_ode_l = size(p)[1] - size(hr)[1]
   p_ode = p[1:p_ode_l]
   solve_ensemble(m,hr,xs,p_ode)
+end
+function (m::MTKCell)(h, xs::AbstractArray, p) where {PROB,SOLVER,SENSEALG,V}
+  # size(h) == (N,1) at the first MTKCell invocation. Need to duplicate batchsize times
+  num_reps = size(xs,3)-size(h,2)+1
+  hr = repeat(h, 1, num_reps)
+  p_ode_l = size(p)[1] - size(hr)[1]
+  p_ode = p[1:p_ode_l]
+  solve_ensemble_full_seq(m,hr,xs,p_ode)
 end
 
 function solve_ensemble(m, u0s, xs, p_ode, tspan=(0f0,1f0))
@@ -107,9 +115,59 @@ function solve_ensemble(m, u0s, xs, p_ode, tspan=(0f0,1f0))
 	get_quantities_of_interest(sol, m)
 end
 
+
+
+function solve_ensemble_full_seq(m, u0s, xs, p_ode)
+
+	tspan = Float32.((0, size(xs,3)))
+	@show tspan
+	@show size(xs)
+  batchsize = size(xs,2)
+  # @show batchsize
+	infs = m.infs
+
+  function prob_func(prob,i,repeat)
+    x = xs[:,i,1]
+    u0 = u0s[:,i]
+    p = vcat(x, p_ode)
+
+		condition(u,t,integrator) = t < tspan[2]
+		function affect!(integrator)
+			integrator.p[1:size(xs,1)] .= xs[:,i,round(Int64,integrator.t)+1]
+			# integrator.p[1:size(xs,1)] .= xs[:,i,trunc(Int,integrator.t)+1]
+		end
+		callback = PeriodicCallback(affect!,1f0,initial_affect=true,save_positions=(true,false))
+
+    remake(prob; u0, tspan, p, callback)
+  end
+
+  function output_func(sol,i)
+    sol.retcode != :Success && return infs, false
+		sol, false
+  end
+
+
+
+  ensemble_prob = EnsembleProblem(m.prob; prob_func, output_func, safetycopy=true) # TODO: safetycopy ???
+  sol = solve(ensemble_prob, m.solver, EnsembleThreads(), trajectories=batchsize,
+              sensealg=m.sensealg, save_everystep=false, saveat=1f0, savestart=false,
+	  # save_on = false,
+	  # save_end = true,
+	  #alias_u0 = true,
+	  # calck = false
+		) # TODO: saveat ?
+
+	get_quantities_of_interest(sol, m)
+end
+
+
+
+
 function get_quantities_of_interest(sol::EnsembleSolution, m::MTKCell)
+	@show sol[1].t
 	s = Array(sol)
-  return s, s[end-m.out+1:end, :]
+	@show size(s)
+  return s[:,end,:], s[end-m.out+1:end, 2:end, :]
 
   # outpins = m.outpins
 	# outb = Flux.Zygote.Buffer(u0s, m.out, batchsize)

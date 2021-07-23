@@ -56,13 +56,19 @@ function Mapper(in::Integer)
   p = vcat(W,b)
   Mapper(W, b, p, length(p))
 end
-# function (m::Mapper{<:AbstractVector{T}})(x::Matrix{T}, p=m.p) where T
-function (m::Mapper)(x, p=m.p)
+# function (m::Mapper)(x, p=m.p)
+#   Wl = size(m.W,1)
+#   W = @view p[1 : Wl]
+#   b = @view p[Wl + 1 : end]
+#   W .* x .+ b
+# end
+function (m::Mapper)(x::AbstractMatrix, p=m.p)
   Wl = size(m.W,1)
   W = @view p[1 : Wl]
   b = @view p[Wl + 1 : end]
   W .* x .+ b
 end
+(m::Mapper)(x::AbstractArray, p=m.p) = reshape(m(reshape(x, size(x,1), :)), :, size(x)[2:end]...)
 Base.show(io::IO, m::Mapper) = print(io, "Mapper(", length(m.W), ")")
 initial_params(m::Mapper) = m.p
 paramlength(m::Mapper) = m.paramlength
