@@ -7,7 +7,7 @@ function InPin(;name)
 end
 
 function OutPin(;name)
-  @variables x(t)
+  @variables x(t) [output=true]
   ODESystem(Equation[],t,[x],Num[]; name)
 end
 

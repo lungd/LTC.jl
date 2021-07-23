@@ -26,6 +26,9 @@ export DataLoader
 using IterTools: ncycle
 export ncycle
 using DiffEqCallbacks
+# using OrderedCollections
+# using LightGraphs
+# import LightGraphs: SimpleDiGraph, add_edge!, incidence_matrix
 
 using NNlib
 export NNlib
@@ -40,6 +43,8 @@ include("mtk_recur.jl")
 include("optimization.jl")
 include("losses.jl")
 include("variables.jl")
+# include("mkt_sysstruct.jl")
+# include("zygote.jl")
 
 include("systems/systems.jl")
 include("systems/ncp/ncp_sys_gen.jl")

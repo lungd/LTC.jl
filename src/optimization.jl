@@ -17,7 +17,7 @@ function optimize(model, loss, cb, opt, AD, train_dl; normalize=false)
                                 )
 
   if normalize
-    solve_normalized(optprob, opt, train_dl, cb = cb)
+    solve_normalized(optprob, opt, train_dl, scale=true, cb = cb)
   else
     GalacticOptim.solve(optprob, opt, train_dl, cb = cb)
   end
@@ -47,22 +47,60 @@ end
 
 
 # https://github.com/SciML/GalacticOptim.jl/issues/146
-function solve_normalized(prob,args... ;cb=(args...)->(false),kwargs...)
+# Skip the DiffEqBase handling
+struct InverseScale{T}
+    scale::T
+end
+
+(inv_scale::InverseScale)(x, compute_inverse::Bool = false) =
+    compute_inverse ? x .* inv_scale.scale : x ./ inv_scale.scale
+
+function solve_normalized(prob::OptimizationProblem, opt, args...;
+               scale::Bool = false, scaling_function = nothing,
+               cb = (args...) -> (false), kwargs...)
+    !scale && return GalacticOptim.solve(prob, opt, args...; kwargs...)
+
     θ_start = copy(prob.u0)
-    @assert !any(θ_start .== 0) "TODO: error text"
+    for (i,p) in enumerate(θ_start)
+      if iszero(p)
+        @show i
+        @show p
+        θ_start[i] += 0.00001f0
+      end
+    end
 
-    _normalize = (θ) ->  θ./θ_start #TODO: inplace?
-    _inv_normalize = (α) -> α.*θ_start
+    if isnothing(scaling_function) && any(iszero.(θ_start))
+        error("Default Inverse Scaling is not compatible with `0` as initial guess")
+    end
 
-    normalized_f(α,args...) = prob.f.f(_inv_normalize(α),args...)
-    normalized_cb(α,args...) = cb(_inv_normalize(α),args...)
+    scaling_function = if isnothing(scaling_function)
+            InverseScale(θ_start)
+        else
+            # Check if arguments are compatible
+            # First arg is the parameter
+            # 2nd one denotes inverse computation or not
+            scaling_function(θ_start, false)
+            scaling_function
+        end
 
-    lb = isnothing(prob.lb) ? nothing : _normalize(prob.lb)
-    ub = isnothing(prob.ub) ? nothing : _normalize(prob.ub)
-    _prob = remake(prob,u0=_normalize(prob.u0),lb=lb,ub=ub,f=OptimizationFunction(normalized_f,prob.f.adtype))
-    # TODO: passing other fields of prob.f
+    normalized_f(α, args...) = prob.f.f(scaling_function(α, true), args...)
+    normalized_cb(α, args...) = cb(scaling_function(α, true), args...)
 
-    optsol = GalacticOptim.solve(_prob,args...;cb=normalized_cb,kwargs...)
-    optsol.u .= _inv_normalize(optsol.u)
+    lb = isnothing(prob.lb) ? nothing : scaling_function(prob.lb, false)
+    ub = isnothing(prob.ub) ? nothing : scaling_function(prob.ub, false)
+
+    u0s = scaling_function(prob.u0, false)
+    optfun = OptimizationFunction(normalized_f, prob.f.adtype,
+                             grad = prob.f.grad, hess = prob.f.hess,
+                             hv = prob.f.hv, cons = prob.f.cons,
+                             cons_j = prob.f.cons_j, cons_h = prob.f.cons_h)
+    optfunc = GalacticOptim.instantiate_function(optfun, u0s, prob.f.adtype, nothing)
+
+    _prob = remake(prob, u0 = u0s, lb = lb,
+                   ub = ub,
+                   f = optfunc)
+
+    optsol = GalacticOptim.solve(_prob, opt, args...; cb = normalized_cb, kwargs...)
+    optsol.u .= scaling_function(optsol.u, true)
     optsol
 end

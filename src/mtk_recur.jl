@@ -32,6 +32,7 @@ struct MTKCell{NET,SYS,PROB,SOLVER,SENSEALG,V,OP,S}
   paramlength::Int
   param_names::Vector{String}
   outpins::OP
+	infs::Vector
   state0::S
 end
 function MTKCell(in::Int, out::Int, net, sys, solver, sensealg; seq_len=1)
@@ -43,9 +44,11 @@ function MTKCell(in::Int, out::Int, net, sys, solver, sensealg; seq_len=1)
   input_idxs = Int8[findfirst(x->contains(string(x), string(Symbol("x$(i)_InPin"))), param_names) for i in 1:in]
 	param_names = param_names[in+1:end]
 
+
   outpins = [getproperty(net, Symbol("x", i, "_OutPin"), namespace=false) for i in 1:out]
 
   state0 = reshape(prob.u0, :, 1)
+	infs = fill(Inf32, size(state0,1))
 
   p_ode = prob.p[in+1:end]
   @show prob.u0
@@ -60,8 +63,9 @@ function MTKCell(in::Int, out::Int, net, sys, solver, sensealg; seq_len=1)
   @show length(prob.p[in+1:end])
   @show input_idxs
   @show outpins
+	# @show sys.states
 
-  MTKCell(in, out, net, sys, prob, solver, sensealg, p, length(p), string.(param_names), outpins, state0)
+  MTKCell(in, out, net, sys, prob, solver, sensealg, p, length(p), string.(param_names), infs, outpins, state0)
 end
 function (m::MTKCell)(h, xs::AbstractVecOrMat{T}, p) where {PROB,SOLVER,SENSEALG,V,T}
   # size(h) == (N,1) at the first MTKCell invocation. Need to duplicate batchsize times
@@ -76,8 +80,7 @@ function solve_ensemble(m, u0s, xs, p_ode, tspan=(0f0,1f0))
 
   batchsize = size(xs,2)
   # @show batchsize
-  infs = fill(Inf32, size(u0s)[1])
-  outpins = m.outpins
+	infs = m.infs
 
   function prob_func(prob,i,repeat)
     x = xs[:,i]
@@ -101,17 +104,22 @@ function solve_ensemble(m, u0s, xs, p_ode, tspan=(0f0,1f0))
 	  # calck = false
 		) # TODO: saveat ?
 
+	get_quantities_of_interest(sol, m)
+end
+
+function get_quantities_of_interest(sol::EnsembleSolution, m::MTKCell)
 	s = Array(sol)
   return s, s[end-m.out+1:end, :]
 
-
+  # outpins = m.outpins
 	# outb = Flux.Zygote.Buffer(u0s, m.out, batchsize)
-	# for i in 1:m.out
-	# 	for j in 1:batchsize
+	# for j in 1:batchsize
+	# 	solj = sol[j]
+	# 	for i in 1:m.out
 	# 		# @show outpins[j].x               # x1_OutPin₊x(t)
 	# 		# @show sol[j][outpins[j].x, end]  # e.g., -0.06400018f0
 	# 		# obs = observed_var_sol(m.sys, sol[j], outpins[j].x)
-	# 		obs = sol[j][outpins[i].x,1]
+	# 		obs = solj[outpins[i].x,1]
 	# 		# @show obs
 	# 		# obs = sol[j][outpins[j].x]
 	# 		outb[i,j] = obs
@@ -143,6 +151,7 @@ function get_bounds(m::RecurMTK)
   states = collect(ModelingToolkit.states(m.cell.sys))
   for v in vcat(params,states)
 		contains(string(v), "OutPin") && continue
+		hasmetadata(v, VariableOutput) && continue
     lower = hasmetadata(v, VariableLowerBound) ? getmetadata(v, VariableLowerBound) : -Inf
     upper = hasmetadata(v, VariableUpperBound) ? getmetadata(v, VariableUpperBound) : Inf
     push!(cell_lb, lower)
