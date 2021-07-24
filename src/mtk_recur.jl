@@ -133,10 +133,12 @@ function solve_ensemble_full_seq(m, u0s, xs, p_ode)
 
 		condition(u,t,integrator) = t < tspan[2]
 		function affect!(integrator)
-			integrator.p[1:size(xs,1)] .= xs[:,i,round(Int64,integrator.t)+1]
+			t = round(Int64,integrator.t)+1
+			t = t > size(xs,3) ? size(xs,3) : t
+			integrator.p[1:size(xs,1)] .= xs[:,i,t]
 			# integrator.p[1:size(xs,1)] .= xs[:,i,trunc(Int,integrator.t)+1]
 		end
-		callback = PeriodicCallback(affect!,1f0,initial_affect=true,save_positions=(true,false))
+		callback = PeriodicCallback(affect!,1f0,initial_affect=false,save_positions=(true,false))
 
     remake(prob; u0, tspan, p, callback)
   end
@@ -150,7 +152,7 @@ function solve_ensemble_full_seq(m, u0s, xs, p_ode)
 
   ensemble_prob = EnsembleProblem(m.prob; prob_func, output_func, safetycopy=true) # TODO: safetycopy ???
   sol = solve(ensemble_prob, m.solver, EnsembleThreads(), trajectories=batchsize,
-              sensealg=m.sensealg, save_everystep=false, saveat=1f0, savestart=false,
+              sensealg=m.sensealg, save_everystep=false, saveat=1f0, save_start=false,
 	  # save_on = false,
 	  # save_end = true,
 	  #alias_u0 = true,
