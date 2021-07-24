@@ -6,13 +6,8 @@ using DiffEqSensitivity
 using OrdinaryDiffEq
 using DiffEqFlux
 using GalacticOptim
-using Juno
-using Cthulhu
-using Profile
-using BlackBoxOptim
-#using PProf
-using ProfileView
 using ModelingToolkit
+import Flux: Data.DataLoader
 
 function generate_data()
     in_features = 2

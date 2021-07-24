@@ -6,9 +6,9 @@ using DiffEqSensitivity
 using OrdinaryDiffEq
 using DiffEqFlux
 using GalacticOptim
-using BlackBoxOptim
-using Flux
+# using BlackBoxOptim
 using ModelingToolkit
+using IterTools: ncycle
 
 include("half_cheetah_data_loader.jl")
 

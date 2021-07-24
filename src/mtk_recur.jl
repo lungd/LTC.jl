@@ -5,7 +5,7 @@ mutable struct RecurMTK{T,V,S}
   state::S
 end
 function RecurMTK(cell; seq_len=1)
-  p = DiffEqFlux.initial_params(cell)
+  p = initial_params(cell)
   RecurMTK(cell, p, length(p), cell.state0)
 end
 function (m::RecurMTK)(x, p=m.p)
