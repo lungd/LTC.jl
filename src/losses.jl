@@ -34,7 +34,7 @@ function loss_seq(p, m::FastChain, x, y)
 end
 
 
-function loss_full_seq(p, m::DiffEqFlux.FastChain, x, y)
+function loss_full_seq(p, m::FastChain, x, y)
   # ŷ = m.(x, [p])
 
   LTC.reset_state!(m, p)

@@ -1,20 +1,21 @@
 using LTC
-using Plots
-gr()
-using BenchmarkTools
+# using Plots
+# gr()
+# using BenchmarkTools
 using DiffEqSensitivity
 using OrdinaryDiffEq
 using DiffEqFlux
 using GalacticOptim
-using BlackBoxOptim
+# using BlackBoxOptim
 using ModelingToolkit
+using IterTools: ncycle
 
 include("half_cheetah_data_loader.jl")
 
 
 function train_cheetah(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true));)
 
-  cbg = function (p,l,pred,y;doplot=true)
+  cbg = function (p,l,pred,y;doplot=false)
     display(l)
     if doplot
       fig = plot([ŷ[1,1] for ŷ in pred], label="ŷ1")
