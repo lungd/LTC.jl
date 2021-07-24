@@ -52,7 +52,7 @@ struct Mapper{V}
 end
 function Mapper(in::Integer)
   W = ones(Float32,in)
-  b = zeros(Float32,in)
+  b = fill(0.00001f0,in)
   p = vcat(W,b)
   Mapper(W, b, p, length(p))
 end

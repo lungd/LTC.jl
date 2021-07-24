@@ -1,7 +1,4 @@
-# one batch: vector of matrices with shape (features,batchsize)
-# [rand(features,batchsize) for 1:seq_len]
-
-
+import NPZ: npzread
 
 function get_dl(; seq_len=32, batchsize=16)
     filepath = joinpath(@__DIR__, "half-cheetah-data")
@@ -14,17 +11,6 @@ function get_dl(; seq_len=32, batchsize=16)
     train_files = all_files[16:25]
     test_files = all_files[6:15]
     valid_files = all_files[1:5]
-
-
-    # goal:
-    # size(first(train_dl)[1]) == [(17,16) for 1:32]
-    # x_data == [ [(17,16) for 1:32] for 1:60 ]
-
-
-
-    # sequences = (32,17,100)
-    # sequences = [(32,17) for 1:100]
-    #
 
 
 

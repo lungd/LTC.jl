@@ -6,8 +6,9 @@ using DiffEqSensitivity
 using OrdinaryDiffEq
 using DiffEqFlux
 using GalacticOptim
-using BlackBoxOptim
+# using BlackBoxOptim
 using ModelingToolkit
+using IterTools: ncycle
 
 include("half_cheetah_data_loader.jl")
 
@@ -26,8 +27,8 @@ function train_cheetah(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacv
     return false
   end
 
-  batchsize=20
-  seq_len=10
+  batchsize=10
+  seq_len=20
   train_dl, test_dl, valid_dl = get_dl(batchsize=batchsize, seq_len=seq_len)
 
   wiring = LTC.NCPWiring(17,17;
@@ -41,11 +42,11 @@ function train_cheetah(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacv
   sys = ModelingToolkit.structural_simplify(net)
 
   model = DiffEqFlux.FastChain(LTC.Mapper(wiring.n_in),
-                               LTC.RecurMTK(LTC.MTKCell(wiring.n_in, wiring.n_out, sys, solver, sensealg)),
+                               LTC.RecurMTK(LTC.MTKCell(wiring.n_in, wiring.n_out, net, sys, solver, sensealg)),
                                LTC.Mapper(wiring.n_out),
                                )
 
-  opt = Flux.Optimiser(ClipValue(1.00), ExpDecay(0.01, 0.1, 200, 1e-4), ADAM())
+  opt = Flux.Optimiser(ClipValue(1.00), ExpDecay(1, 0.1, 200, 1e-4), ADAM())
   # opt = Optim.LBFGS()
   # opt = BBO()
   # opt = ParticleSwarm(;lower=lb, upper=ub)
