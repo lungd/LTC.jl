@@ -91,17 +91,10 @@ function train_lv(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=Re
   batchsize=10
   train_dl = get_data(seq_len,width,batchsize)
 
-  wiring = LTC.NCPWiring(2,2;
-    n_sensory=2, n_inter=5, n_command=4, n_motor=2,
-    sensory_in=-1, rec_sensory=4, sensory_inter=2, sensory_command=1, sensory_motor=0,
-    inter_in=2, rec_inter=2, inter_command=3, inter_motor=1,                       # inter_in = sensory_out
-    command_in=0, rec_command=4, command_motor=4,                   # command_in = inter_out
-    motor_in=0, rec_motor=2)
 
-
-    wiring = LTC.FWiring(2,2)
-    net = LTC.Net(wiring, name=:net)
-    sys = ModelingToolkit.structural_simplify(net)
+  wiring = LTC.FWiring(2,2)
+  net = LTC.Net(wiring, name=:net)
+  sys = ModelingToolkit.structural_simplify(net)
 
   model = DiffEqFlux.FastChain(#(x,p) -> x[1],
                                LTC.Mapper(wiring.n_in),
