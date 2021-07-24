@@ -44,26 +44,27 @@ paramlength(m::Broadcaster) = m.paramlength
 # Flux.@functor Broadcaster #(model,)
 Flux.trainable(m::Broadcaster) = (m.model,)
 
-struct Mapper{V}
+struct Mapper{V,F}
   W::V
   b::V
   p::V
+  σ::F
   paramlength::Int
 end
-function Mapper(in::Integer)
+function Mapper(in::Integer,σ=identity)
   W = ones(Float32,in)
   b = fill(0.00001f0,in)
   p = vcat(W,b)
-  Mapper(W, b, p, length(p))
+  Mapper(W, b, p, σ, length(p))
 end
 # function (m::Mapper{<:AbstractVector{T}})(x::Matrix{T}, p=m.p) where T
 function (m::Mapper)(x, p=m.p)
   Wl = size(m.W,1)
   W = @view p[1 : Wl]
   b = @view p[Wl + 1 : end]
-  W .* x .+ b
+  m.σ.(W .* x .+ b)
 end
-Base.show(io::IO, m::Mapper) = print(io, "Mapper(", length(m.W), ")")
+Base.show(io::IO, m::Mapper) = print(io, "Mapper(", length(m.W), ", ", m.σ, ")")
 initial_params(m::Mapper) = m.p
 paramlength(m::Mapper) = m.paramlength
 
