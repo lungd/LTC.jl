@@ -6,13 +6,8 @@ using DiffEqSensitivity
 using OrdinaryDiffEq
 using DiffEqFlux
 using GalacticOptim
-using Juno
-using Cthulhu
-using Profile
-using BlackBoxOptim
-#using PProf
-using ProfileView
 using ModelingToolkit
+import Flux: Data.DataLoader
 
 function generate_data()
     in_features = 2
@@ -48,7 +43,7 @@ function train_sine(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=
   sys = ModelingToolkit.structural_simplify(net)
 
   model = DiffEqFlux.Chain(Flux.Dense(wiring.n_in,wiring.n_in,tanh), LTC.Mapper(wiring.n_in),
-                               LTC.RecurMTK(LTC.MTKCell(wiring.n_in, wiring.n_out, sys, solver, sensealg)),
+                               LTC.RecurMTK(LTC.MTKCell(wiring.n_in, wiring.n_out, net, sys, solver, sensealg)),
                                LTC.Mapper(wiring.n_out),
                                )
 

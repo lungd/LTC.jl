@@ -6,13 +6,8 @@ using DiffEqSensitivity
 using OrdinaryDiffEq
 using DiffEqFlux
 using GalacticOptim
-using Juno
-using Cthulhu
-using Profile
-using BlackBoxOptim
-#using PProf
-using ProfileView
 using ModelingToolkit
+import Flux: Data.DataLoader
 
 function generate_data()
     in_features = 2
@@ -30,7 +25,7 @@ end
 
 function train_sine(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)))
 
-  cbg = function (p,l,pred,y;doplot=false)
+  cbg = function (p,l,pred,y;doplot=true)
     display(l)
     if doplot
       fig = plot([ŷ[end,1] for ŷ in pred], label="ŷ")
@@ -49,7 +44,7 @@ function train_sine(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=
   sys = ModelingToolkit.structural_simplify(net)
 
   model = DiffEqFlux.FastChain(LTC.Mapper(wiring.n_in),
-                               LTC.RecurMTK(LTC.MTKCell(wiring.n_in, wiring.n_out, sys, solver, sensealg)),
+                               LTC.RecurMTK(LTC.MTKCell(wiring.n_in, wiring.n_out, net, sys, solver, sensealg)),
                                LTC.Mapper(wiring.n_out),
                                )
 
@@ -62,11 +57,14 @@ function train_sine(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=
   AD = GalacticOptim.AutoZygote()
   # AD = GalacticOptim.AutoModelingToolkit()
 
+  # return model
+
   LTC.optimize(model, LTC.loss_seq, cbg, opt, AD, train_dl)
 
 end
 
-@time train_sine(10)
+@time model = train_sine(100)
+# @time model = train_sine(100, Tsit5(), InterpolatingAdjoint(autojacvec=DiffEqSensitivity.EnzymeVJP()))
 # @time traintest(1000, QNDF())
 # @time traintest(1000, TRBDF2())
 # @time traintest(1000, AutoTsit5(Rosenbrock23()))
