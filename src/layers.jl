@@ -50,19 +50,19 @@ struct Mapper{V,F}
   p::V
   σ::F
   paramlength::Int
+
+  function Mapper(W::V, b::V, p::V, σ::F=identity) where {V<:AbstractVector, F}
+    paramlength = length(p)
+    new{V,F}(W, b, p, σ, paramlength)
+  end
 end
-function Mapper(in::Integer,σ=identity)
-  W = ones(Float32,in)
-  b = fill(0.00001f0,in)
+
+function Mapper(in::Integer,σ=identity,init=dims->ones(Float32,dims...),bias=dims->zeros(Float32,dims...))
+  W = init(in)
+  b = bias(in) .+ 0.0001f0 # scaling needs initial guess != 0
   p = vcat(W,b)
-  Mapper(W, b, p, σ, length(p))
+  Mapper(W, b, p, σ)
 end
-# function (m::Mapper)(x, p=m.p)
-#   Wl = size(m.W,1)
-#   W = @view p[1 : Wl]
-#   b = @view p[Wl + 1 : end]
-#   W .* x .+ b
-# end
 function (m::Mapper)(x::AbstractMatrix, p=m.p)
   Wl = size(m.W,1)
   W = @view p[1 : Wl]
@@ -111,10 +111,17 @@ get_bounds(m::Broadcaster) = get_bounds(m.model)
 get_bounds(m::FluxLayerWrapper) = get_bounds(m.layer)
 
 function get_bounds(m::Mapper)
-  lb = vcat(fill(-10.1, length(m.W)),
-            fill(-10.1, length(m.b))) |> f32
-  ub = vcat(fill(-10.1, length(m.W)),
-            fill(-10.1, length(m.b))) |> f32
+  T = eltype(m.W)
+  lb = T[]
+  ub = T[]
+  for _ in 1:length(m.W)
+    push!(lb, -10.1)
+    push!(ub, 10.1)
+  end
+  for _ in 1:length(m.b)
+    push!(lb, -10.1)
+    push!(ub, 10.1)
+  end
   lb, ub
 end
 
@@ -125,17 +132,33 @@ function get_bounds(m::Union{Flux.Chain, FastChain})
 end
 
 function get_bounds(m::FastDense)
-  lb = vcat(fill(-10.1, m.out*m.in),
-            fill(-10.1, m.out)) |> f32
-  ub = vcat(fill(10.1, m.out*m.in),
-            fill(10.1, m.out)) |> f32
+  T = eltype(m.initial_params())
+  lb = T[]
+  ub = T[]
+  for _ in 1:m.out*m.in # weights
+    push!(lb, -10.1)
+    push!(ub, 10.1)
+  end
+  if m.bias
+    for _ in 1:m.out
+      push!(lb, -10.1)
+      push!(ub, 10.1)
+    end
+  end
   lb, ub
 end
 
 function get_bounds(m::Flux.Dense)
-  lb = vcat(fill(-10.1, length(m.weight)),
-            fill(-10.1, length(m.bias))) |> f32
-  ub = vcat(fill(10.1, length(m.weight)),
-            fill(10.1, length(m.bias))) |> f32
+  T = eltype(m.weights)
+  lb = T[]
+  ub = T[]
+  for _ in 1:length(m.weights)
+    push!(lb, -10.1)
+    push!(ub, 10.1)
+  end
+  for _ in 1:length(m.bias)
+    push!(lb, -10.1)
+    push!(ub, 10.1)
+  end
   lb, ub
 end

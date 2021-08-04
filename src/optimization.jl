@@ -1,4 +1,24 @@
-function optimize(model, loss, cb, opt, AD, train_dl; normalize=false)
+# function Symbolics.toexpr(p::Symbolics.SpawnFetch{ModelingToolkit.MultithreadedForm}, st)
+#     args = isnothing(p.args) ?
+#               Iterators.repeated((), length(p.exprs)) : p.args
+#     spawns = map(p.exprs, args) do thunk, a
+#         ex = :($Funcall($(Symbolics.@RuntimeGeneratedFunction(toexpr(thunk, st))),
+#                        ($(toexpr.(a, (st,))...),)))
+#         quote
+#             let
+#                 task = Base.Task($ex)
+#                 task.sticky = false
+#                 Base.schedule(task)
+#                 task
+#             end
+#         end
+#     end
+#     quote
+#         $(toexpr(p.combine, st))(map(fetch, ($(spawns...),))...)
+#     end
+# end
+
+function optimize(model, loss, cb, opt, AD, train_dl, tspan=nothing; normalize=false)
   pp = initial_params(model)
   lb, ub = get_bounds(model)
 
@@ -9,13 +29,16 @@ function optimize(model, loss, cb, opt, AD, train_dl; normalize=false)
   @show length(lb)
   @show length(ub)
 
-  optfun = GalacticOptim.OptimizationFunction((θ,p,x,y) -> loss(θ,model,x,y), AD)
+  # f = tspan == nothing ? (θ,p,x,y) -> loss(θ,model,x,y) : (θ,p,x,y) -> loss(θ,model,x,y,tspan)
+  f = (θ,p,x,y) -> loss(θ,model,x,y)
+  optfun = GalacticOptim.OptimizationFunction(f, AD)
   optfunc = GalacticOptim.instantiate_function(optfun, pp, AD, nothing)
   optprob = GalacticOptim.OptimizationProblem(optfunc, pp, lb=lb, ub=ub,
-                                #grad = true, hess = true, sparse = true,
+                                grad = true, hess = true, #sparse = true,
                                 #parallel=ModelingToolkit.MultithreadedForm()
                                 )
-
+  # sys = ModelingToolkit.modelingtoolkitize(optprob)
+  # optprob = OptimizationProblem(sys,pp,lb=lb, ub=ub,grad=true,hess=true)
   if normalize
     solve_normalized(optprob, opt, train_dl, scale=true, cb = cb)
   else
@@ -61,13 +84,6 @@ function solve_normalized(prob::OptimizationProblem, opt, args...;
     !scale && return GalacticOptim.solve(prob, opt, args...; kwargs...)
 
     θ_start = copy(prob.u0)
-    for (i,p) in enumerate(θ_start)
-      if iszero(p)
-        @show i
-        @show p
-        θ_start[i] += 0.00001f0
-      end
-    end
 
     if isnothing(scaling_function) && any(iszero.(θ_start))
         error("Default Inverse Scaling is not compatible with `0` as initial guess")

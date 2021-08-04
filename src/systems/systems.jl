@@ -1,9 +1,14 @@
 @parameters t
 D = Differential(t)
 
-function InPin(;name)
-  @parameters x=13f0
+function InPin(T=Float32; name)
+  @parameters x=T(13.0)
   ODESystem(Equation[],t,Num[],[x]; name)
+end
+
+function InSPin(T=Float32; name)
+  @variables x(t)=T(13.0)
+  ODESystem(Equation[D(x)~0],t,[x],Num[]; name)
 end
 
 function OutPin(;name)
@@ -12,7 +17,7 @@ function OutPin(;name)
 end
 
 function create_pins(in::Integer, out::Integer)
-  inpins = [InPin(;name=Symbol("x$(i)_InPin")) for i in 1:in]
+  inpins = [InSPin(;name=Symbol("x$(i)_InPin")) for i in 1:in]
   outpins = [OutPin(;name=Symbol("x$(i)_OutPin")) for i in 1:out]
   inpins, outpins
 end

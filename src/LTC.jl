@@ -12,6 +12,14 @@ using ModelingToolkit
 using Flux
 using NNlib: sigmoid
 
+# using CatViews
+
+# using DiffEqCallbacks
+# import DiffEqCallbacks: SavedValues
+import DiffEqCallbacks: PeriodicCallback, PresetTimeCallback
+import LinearAlgebra: Diagonal
+using Random
+
 rand_uniform(TYPE, lb,ub,dims...) = TYPE.(rand(Uniform(lb,ub),dims...))
 rand_uniform(TYPE, lb,ub) = rand_uniform(TYPE, lb,ub,1)[1]
 
@@ -19,9 +27,15 @@ rand_uniform(TYPE, lb,ub) = rand_uniform(TYPE, lb,ub,1)[1]
 
 include("layers.jl")
 include("mtk_recur.jl")
+include("mtk_recur_autonomous.jl")
+include("mtk_node.jl")
 include("optimization.jl")
 include("losses.jl")
 include("variables.jl")
+
+include("data.jl")
+export create_mini_batches
+
 # include("mkt_sysstruct.jl")
 # include("zygote.jl")
 
@@ -31,6 +45,7 @@ include("systems/ncp/wiring.jl")
 
 
 export MTKRecur, MTKCell, Mapper, Broadcaster, get_bounds
+export MTKRecurAut, MTKCellAut
 export initial_params, paramlength
 export reset_state!
 export optimize

@@ -1,6 +1,6 @@
 import NPZ: npzread
 
-function get_dl(; seq_len=32, batchsize=16)
+function get_dl(T; seq_len=32, batchsize=16)
     filepath = joinpath(@__DIR__, "half-cheetah-data")
     data_dir = filepath
 
@@ -8,16 +8,16 @@ function get_dl(; seq_len=32, batchsize=16)
 
     all_files = readdir(data_dir)
     all_files = ["$(data_dir)/$(f)" for f in all_files]
-    train_files = all_files[16:25]
-    test_files = all_files[6:15]
     valid_files = all_files[1:5]
+    test_files = all_files[6:15]
+    train_files = all_files[16:16]
 
 
 
 
-    train_x, train_y = _load_files(train_files, seq_len)
-    test_x, test_y = _load_files(test_files, seq_len)
-    valid_x, valid_y = _load_files(valid_files, seq_len)
+    train_x, train_y, train_seq = _load_files(T, train_files, seq_len)
+    test_x, test_y, test_seq = _load_files(T, test_files, seq_len)
+    valid_x, valid_y, valid_seq = _load_files(T, valid_files, seq_len)
 
     # (970×32×17)
     train_x = permutedims(train_x,(3,1,2))
@@ -29,9 +29,9 @@ function get_dl(; seq_len=32, batchsize=16)
     # (17x970x32)
 
 
-    train_x_new = train_y_new = Vector{Matrix{Float32}}[]
-    test_x_new = test_y_new = Vector{Matrix{Float32}}[]
-    valid_x_new = valid_y_new = Vector{Matrix{Float32}}[]
+    train_x_new = train_y_new = Vector{Matrix{T}}[]
+    test_x_new = test_y_new = Vector{Matrix{T}}[]
+    valid_x_new = valid_y_new = Vector{Matrix{T}}[]
     # train_x_new = train_y_new = []
     # test_x_new = test_y_new = []
     # valid_x_new = valid_y_new = []
@@ -85,21 +85,23 @@ function get_dl(; seq_len=32, batchsize=16)
     # test_dl = (test_x_new, test_y_new)
     # valid_dl = (valid_x_new, valid_y_new)
 
-    return train_dl, test_dl, valid_dl
+    return train_dl, test_dl, valid_dl, train_seq
 end
 
 
-function _load_files(files, seq_len)
+function _load_files(T, files, seq_len)
     all_x = []
     all_y = []
+    sequences = []
     for f in files
-        arr = Float32.(npzread(f))
+        arr = T.(npzread(f))
+        push!(sequences, permutedims(arr, (2,1)))
         x, y = _cut_in_sequences(arr, seq_len, 10)
         push!(all_x, x...)
         push!(all_y, y...)
     end
 
-    return Flux.stack(all_x,1), Flux.stack(all_y,1)
+    return Flux.stack(all_x,1), Flux.stack(all_y,1), sequences
     #return all_x, all_y
 end
 
@@ -118,3 +120,75 @@ end
 
 # train_dl = get_dl()[1][1]
 # x = train_dl[1]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#
+# using OrdinaryDiffEq, DiffEqFlux, Plots
+# using IterTools: ncycle
+#
+#
+# function newtons_cooling(du, u, p, t)
+#     temp = u[1]
+#     k, temp_m = p
+#     du[1] = dT = -k*(temp-temp_m)
+#   end
+#
+# function true_sol(du, u, p, t)
+#     true_p = [log(2)/8.0, 100.0]
+#     newtons_cooling(du, u, true_p, t)
+# end
+#
+#
+# ann = FastChain(FastDense(1,8,tanh), FastDense(8,1,tanh))
+# θ = initial_params(ann)
+#
+# function dudt_(u,p,t)
+#     ann(u, p).* u
+# end
+#
+# function predict_adjoint(time_batch)
+#     _prob = remake(prob,u0=u0,p=θ)
+#     Array(solve(_prob, Tsit5(), saveat = time_batch))
+# end
+#
+# function loss_adjoint(batch, time_batch)
+#     pred = predict_adjoint(time_batch)
+#     sum(abs2, batch - pred)#, pred
+# end
+#
+#
+# u0 = Float32[200.0]
+# datasize = 30
+# tspan = (0.0f0, 3.0f0)
+#
+# t = range(tspan[1], tspan[2], length=datasize)
+# true_prob = ODEProblem(true_sol, u0, tspan)
+# ode_data = Array(solve(true_prob, Tsit5(), saveat=t))
+#
+# prob = ODEProblem{false}(dudt_, u0, tspan, θ)
+#
+# k = 10
+# train_loader = Flux.Data.DataLoader((ode_data, t), batchsize = k, shuffle=false)
+# length(train_loader)
+# fy, saveat = first(train_loader)
