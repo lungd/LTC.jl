@@ -11,6 +11,11 @@ function InSPin(T=Float32; name)
   ODESystem(Equation[D(x)~0],t,[x],Num[]; name)
 end
 
+function InPinTVP(T=Float32; name)
+  @parameters x(t)=T(1)
+  ODESystem(Equation[],t,[],Num[x]; name)
+end
+
 function OutPin(;name)
   @variables x(t) [output=true]
   ODESystem(Equation[],t,[x],Num[]; name)

@@ -18,6 +18,7 @@ using NNlib: sigmoid
 # import DiffEqCallbacks: SavedValues
 import DiffEqCallbacks: PeriodicCallback, PresetTimeCallback
 import LinearAlgebra: Diagonal
+import DataInterpolations: ConstantInterpolation
 using Random
 
 rand_uniform(TYPE, lb,ub,dims...) = TYPE.(rand(Uniform(lb,ub),dims...))
@@ -28,6 +29,8 @@ rand_uniform(TYPE, lb,ub) = rand_uniform(TYPE, lb,ub,1)[1]
 include("layers.jl")
 include("mtk_recur.jl")
 include("mtk_recur_autonomous.jl")
+include("mtk_node_tvp.jl")
+include("mtk_node_p.jl")
 include("mtk_node.jl")
 include("optimization.jl")
 include("losses.jl")

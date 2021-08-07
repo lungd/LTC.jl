@@ -59,7 +59,7 @@ end
 
 function Mapper(in::Integer,σ=identity,init=dims->ones(Float32,dims...),bias=dims->zeros(Float32,dims...))
   W = init(in)
-  b = bias(in) .+ 0.0001f0 # scaling needs initial guess != 0
+  b = bias(in) #.+ 0.0001f0 # scaling needs initial guess != 0
   p = vcat(W,b)
   Mapper(W, b, p, σ)
 end

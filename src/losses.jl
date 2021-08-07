@@ -63,6 +63,10 @@ function loss_seq_node(p, m::FastChain, _x, _y)
   LTC.reset_state!(m, p)
 
   _ŷ = m(x, p)
+
+  Inf ∈ _ŷ && return Inf32, _ŷ, y
+  NaN ∈ _ŷ && return Inf32, _ŷ, y
+
   # ŷ = Flux.unstack(_ŷ, 2)[2:end]
   ŷ = _ŷ#[2:end]
 
@@ -75,7 +79,7 @@ function loss_seq_node(p, m::FastChain, _x, _y)
   # y_probs = [y[i][1,1] for i in 1:length(y)]
   # return Flux.Losses.logitbinarycrossentropy(ŷ_probs, y_probs, agg=mean), ŷ, y
 
-  return mean(Flux.Losses.mse.(ŷ,y, agg=mean)), ŷ, y
+  return mean(Flux.Losses.mse.(Flux.unstack(ŷ,2),Flux.unstack(y,2), agg=mean)), ŷ, y
   # return Flux.Losses.mse(ŷ[end],y[end], agg=mean), ŷ, y
 end
 

@@ -9,9 +9,9 @@ using LTC: rand_uniform
 function SigmoidSynapse(T=Float32; name, E=rand_uniform(T, -0.3, 0.3))
   vars = @variables I(t), v_pre(t), v_post(t)
   ps = @parameters begin
-    μ = rand_uniform(T, 0.3, 0.8), [lower = T(-1.0), upper = T(1.0)]
+    μ = rand_uniform(T, 0.3, 0.8), [lower = T(0.01), upper = T(1.0)]
     σ = rand_uniform(T, 3, 8), [lower = T(1.0), upper = 10.0]
-    G = rand_uniform(T, 0.001, 1), [lower = T(0.000001), upper = T(2.1)]
+    G = rand_uniform(T, 0.001, 1), [lower = T(0), upper = T(2.1)]
     E = E, [lower = T(-1.1), upper = T(1.1)]
   end
   eqs = [
@@ -23,7 +23,7 @@ end
 function LeakChannel(T=Float32; name)
   vars = @variables I(t), v(t)
   ps = @parameters begin
-    G = rand_uniform(T, 0.001, 1), [lower = T(0.000001), upper = T(2.1)]
+    G = rand_uniform(T, 0.001, 1), [lower = T(0), upper = T(2.1)]
     E = rand_uniform(T, -0.3, 0.3), [lower = T(-1.1), upper = T(1.1)]
   end
   eqs = [
@@ -34,7 +34,7 @@ end
 
 function Neuron(T=Float32; name)
   @variables begin
-    (v(t) = rand_uniform(T, 0.001, 0.2)), [lower = T(-2.0), upper = T(2.0)]
+    (v(t) = rand_uniform(T, 0.001, 0.2)), [lower = T(0), upper = T(2.0)]
     (I_comps(t))
   end
   ps = @parameters begin
