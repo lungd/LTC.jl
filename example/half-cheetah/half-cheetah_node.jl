@@ -22,29 +22,13 @@ end
 
 function train_cheetah_node(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)); T=Float32)
 
-  cb = function (p,l,pred,y;doplot=true)
+  cb = function (p,l,ŷ,y;doplot=true)
     display(l)
     if doplot
-      fig = plot([ŷ[1,1] for ŷ in Flux.unstack(pred,2)], label="ŷ1")
-      plot!(fig, [ŷ[2,1] for ŷ in Flux.unstack(pred,2)], label="ŷ2")
-      plot!(fig, [yi[1,1] for yi in Flux.unstack(y,2)], label="y1")
-      plot!(fig, [yi[2,1] for yi in Flux.unstack(y,2)], label="y2")
-      display(fig)
-    end
-    return false
-  end
-
-  ecb = function (losses,epoch,res;doplot=true)
-    # display(l)
-    println("Epoch $(string(epoch, pad = length(digits(epochs))))/$(epochs), train_loss:$(losses[end])")
-    if doplot
-      x,y = first(train_dl)
-      LTC.reset_state!(model, res.u)
-      pred = model(x,res.u)
-      fig = plot([ŷ[1,1] for ŷ in pred], label="ŷ1")
-      plot!(fig, [ŷ[2,1] for ŷ in pred], label="ŷ2")
-      plot!(fig, [yi[1,1] for yi in y], label="y1")
-      plot!(fig, [yi[2,1] for yi in y], label="y2")
+      fig = plot(y[1,:,1], label="y1")
+      plot!(fig, y[2,:,1], label="y2")
+      plot!(fig, ŷ[1,:,1], label="ŷ1")
+      plot!(fig, ŷ[2,:,1], label="ŷ2")
       display(fig)
     end
     return false

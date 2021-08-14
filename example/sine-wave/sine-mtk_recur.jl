@@ -22,11 +22,11 @@ end
 
 function train_sine(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)); T=Float32)
 
-  cb = function (p,l,pred,y;doplot=true)
+  cb = function (p,l,ŷ,y;doplot=true)
     display(l)
     if doplot
-      fig = plot([ŷ[end,1] for ŷ in pred], label="ŷ")
-      plot!(fig, [yi[end,1] for yi in y], label="y")
+      fig = plot(Flux.stack(y,2)[1,:,1], label="y")
+      plot!(fig, Flux.stack(ŷ,2)[1,:,1], label="ŷ")
       display(fig)
     end
     return false
