@@ -1,6 +1,6 @@
 abstract type WiringT <: Function end
 
-struct Wiring <: WiringT
+struct Wiring{T} <:WiringT
     n_in::Int
     n_out::Int
     n_sensory::Int
@@ -14,50 +14,40 @@ struct Wiring <: WiringT
     rec_command_out::Int
     motor_in::Int
 
-    sens_mask::Matrix{Float32}
-    syn_mask::Matrix{Float32}
+    sens_mask::Matrix{T}
+    syn_mask::Matrix{T}
 
-    sens_pol::Matrix{Float32}
-    syn_pol::Matrix{Float32}
+    sens_pol::Matrix{T}
+    syn_pol::Matrix{T}
 
-    # function Wiring(n_in,out,n_sensory,n_inter,n_command,n_motor,n_total,sensory_out,inter_out,rec_command_out,motor_in,sens_mask,syn_mask,sens_pol,syn_pol)
-    #     new{typeof(sens_mask),typeof(syn_mask),typeof(sens_pol),typeof(syn_pol)}(
-    #                 n_in,out,n_sensory,n_inter,n_command,n_motor,n_total,sensory_out,inter_out,rec_command_out,motor_in,sens_mask,syn_mask,sens_pol,syn_pol)
-    # end
+    function Wiring(n_in,out,n_sensory,n_inter,n_command,n_motor,n_total,sensory_out,inter_out,rec_command_out,motor_in,sens_mask,syn_mask,sens_pol,syn_pol)
+        new{eltype(sens_mask)}(
+                    n_in,out,n_sensory,n_inter,n_command,n_motor,n_total,sensory_out,inter_out,rec_command_out,motor_in,sens_mask,syn_mask,sens_pol,syn_pol)
+    end
 end
 
+random_polarity(p=[-1,1,1]) = p[rand(1:length(p))]
 
+# get_n_in(m::Wiring) = m.n_in
+# get_n_total(m::Wiring) = m.n_total
 
-get_n_in(m::Wiring) = m.n_in
-get_n_total(m::Wiring) = m.n_total
+function FWiring(in::Int, out::Int, T=Float32;) #where TYPE <: AbstractFloat
+  n_total   = out
 
-function FWiring(in::Int, out::Int;
-                n_sensory=2, n_inter=5, n_command=0, n_motor=1,
-                sensory_in=-1, rec_sensory=-1, sensory_out=-1,
-                rec_inter=-1, inter_out=-1,                       # inter_in = sensory_out
-                rec_command=-1, command_out=-1,                   # command_in = inter_out
-                rec_motor=-1)                                     # motor_in = command_out, motor_out = out
-  sensory_s = 1
-  inter_s   = n_sensory + 1
-  command_s = n_sensory + n_inter + 1
-  motor_s   = n_sensory + n_inter + n_command + 1
-  n_total   = n_sensory + n_inter + n_command + n_motor
+  sens_mask = ones(T, in, n_total)
+  syn_mask  = ones(T, n_total, n_total)
 
-  sens_mask = ones(Float32, in, n_total)
-  syn_mask  = ones(Float32, n_total, n_total)
-
-  sens_pol = ones(Float32, in, n_total)
-  syn_pol  = ones(Float32, n_total, n_total)
+  sens_pol = ones(T, in, n_total)
+  syn_pol  = ones(T, n_total, n_total)
   for i in eachindex(sens_pol)
-    sens_pol[i] = [-1,1][rand(1:2)]
+    sens_pol[i] = random_polarity()
   end
   for i in eachindex(syn_pol)
-    syn_pol[i] = [-1,1][rand(1:2)]
+    syn_pol[i] = random_polarity()
   end
 
-  Wiring(in,out,n_sensory, n_inter,n_command,n_motor,n_total,sensory_out,inter_out,rec_command,command_out,sens_mask,syn_mask,sens_pol,syn_pol)
+  Wiring(in,out,-1,-1,-1,n_total,n_total,-1,-1,-1,-1,sens_mask,syn_mask,sens_pol,syn_pol)
 end
-
 
 
 function add_synapses!(srcs,dsts,n_out,bitmask,polmask)
@@ -68,7 +58,7 @@ function add_synapses!(srcs,dsts,n_out,bitmask,polmask)
         for _ in n_out
             dst = dsts[rand(1:length(dsts))]
             bitmask[src,dst] = 1
-            polmask[src,dst] = [-1,1,1][rand(1:3)]
+            polmask[src,dst] = random_polarity()
         end
     end
 end
@@ -83,7 +73,7 @@ function add_missing_synapses!(srcs, dsts, bitmask, polmask; n=1)
             for i in 1:n
                 random_src = srcs[rand(1:length(srcs))]
                 bm[random_src] = 1
-                pm[random_src] = [-1,1,1][rand(1:3)]
+                pm[random_src] = random_polarity()
             end
         end
     end
@@ -95,12 +85,12 @@ function create_wiring(n_sensory, n_inter, n_command, n_motor,
   inter_in, rec_inter, inter_command, inter_motor,                       # inter_in = sensory_out
   command_in, rec_command, command_motor,                   # command_in = inter_out
   motor_in, rec_motor,
-  sens_mask, sens_pol, create_input_syns=0)
+  sens_mask, sens_pol, create_input_syns=0, T=Float32;)# where TYPE <: AbstractFloat
 
   n_total   = n_sensory + n_inter + n_command + n_motor
 
-  syn_mask  = zeros(Float32, n_total, n_total)
-  syn_pol  = ones(Float32, n_total, n_total)
+  syn_mask  = zeros(T, n_total, n_total)
+  syn_pol  = ones(T, n_total, n_total)
 
   sensory_s = 1
   inter_s   = n_sensory + 1
@@ -138,12 +128,12 @@ function create_wiring(n_sensory, n_inter, n_command, n_motor,
   return sens_mask, syn_mask, sens_pol, syn_pol
 end
 
-function DiagSensNCPWiring(n_in::Int, n_out::Int;
+function DiagSensNCPWiring(n_in::Int, n_out::Int, T=Float32;
                 n_sensory=2, n_inter=3, n_command=5, n_motor=1,
                 sensory_in=-1, rec_sensory=0, sensory_inter=2, sensory_command=0, sensory_motor=0,
                 inter_in=0, rec_inter=2, inter_command=2, inter_motor=0,                       # inter_in = sensory_out
                 command_in=0, rec_command=1, command_motor=3,                   # command_in = inter_out
-                motor_in=0, rec_motor=1, orig=false, T=Float32)
+                motor_in=0, rec_motor=1, orig=false)
 
   @assert n_in == n_sensory
   n_total   = n_sensory + n_inter + n_command + n_motor
@@ -153,7 +143,8 @@ function DiagSensNCPWiring(n_in::Int, n_out::Int;
   for s in 1:n_in
     for t in 1:n_sensory
       s != t && continue
-      add_synapse!(s, t, 1, sens_mask, sens_pol)
+      polarity = 1
+      add_synapse!(s, t, sens_mask, sens_pol, polarity)
     end
   end
 
@@ -161,21 +152,21 @@ function DiagSensNCPWiring(n_in::Int, n_out::Int;
     sensory_inter,
     inter_command,
     rec_command, command_motor,
-    sens_mask, sens_pol, T=T) : create_wiring(n_sensory, n_inter, n_command, n_motor,
+    sens_mask, sens_pol, T) : create_wiring(n_sensory, n_inter, n_command, n_motor,
     sensory_in, rec_sensory, sensory_inter, sensory_command, sensory_motor,
     inter_in, rec_inter, inter_command, inter_motor,                       # inter_in = sensory_out
     command_in, rec_command, command_motor,                   # command_in = inter_out
     motor_in, rec_motor,
-    sens_mask, sens_pol)
+    sens_mask, sens_pol, T)
   Wiring(n_in,n_out,n_sensory, n_inter,n_command,n_motor,n_total,sensory_inter,inter_command,rec_command,command_motor,sens_mask,syn_mask,sens_pol,syn_pol)
 end
 
-function FullSensNCPWiring(n_in::Int, n_out::Int;
+function FullSensNCPWiring(n_in::Int, n_out::Int, T::TYPE=Float32;
                 n_sensory=2, n_inter=3, n_command=5, n_motor=1,
                 sensory_in=-1, rec_sensory=0, sensory_inter=2, sensory_command=0, sensory_motor=0,
                 inter_in=0, rec_inter=2, inter_command=2, inter_motor=0,                       # inter_in = sensory_out
                 command_in=0, rec_command=1, command_motor=3,                   # command_in = inter_out
-                motor_in=0, rec_motor=1, orig=false, T=Float32)
+                motor_in=0, rec_motor=1, orig=false) where TYPE <: AbstractFloat
 
   @assert n_in == n_sensory
   n_total   = n_sensory + n_inter + n_command + n_motor
@@ -192,21 +183,21 @@ function FullSensNCPWiring(n_in::Int, n_out::Int;
     sensory_inter,
     inter_command,
     rec_command, command_motor,
-    sens_mask, sens_pol, T=T) : create_wiring(n_sensory, n_inter, n_command, n_motor,
+    sens_mask, sens_pol, T) : create_wiring(n_sensory, n_inter, n_command, n_motor,
     sensory_in, rec_sensory, sensory_inter, sensory_command, sensory_motor,
     inter_in, rec_inter, inter_command, inter_motor,                       # inter_in = sensory_out
     command_in, rec_command, command_motor,                   # command_in = inter_out
     motor_in, rec_motor,
-    sens_mask, sens_pol)
+    sens_mask, sens_pol, T)
   Wiring(n_in,n_out,n_sensory, n_inter,n_command,n_motor,n_total,sensory_inter,inter_command,rec_command,command_motor,sens_mask,syn_mask,sens_pol,syn_pol)
 end
 
-function DiagFullNCPWiring(n_in::Int, n_out::Int;
+function DiagFullNCPWiring(n_in::Int, n_out::Int, T::TYPE=Float32;
                 n_sensory=2, n_inter=3, n_command=5, n_motor=1,
                 sensory_in=-1, rec_sensory=0, sensory_inter=2, sensory_command=0, sensory_motor=0,
                 inter_in=0, rec_inter=2, inter_command=2, inter_motor=0,                       # inter_in = sensory_out
                 command_in=0, rec_command=1, command_motor=3,                   # command_in = inter_out
-                motor_in=0, rec_motor=1, T=Float32)
+                motor_in=0, rec_motor=1) where TYPE <: AbstractFloat
 
   n_total   = n_sensory + n_inter + n_command + n_motor
   @assert n_in == n_total
@@ -225,22 +216,22 @@ function DiagFullNCPWiring(n_in::Int, n_out::Int;
     sensory_inter,
     inter_command,
     rec_command, command_motor,
-    sens_mask, sens_pol, T=T) : create_wiring(n_sensory, n_inter, n_command, n_motor,
+    sens_mask, sens_pol, T) : create_wiring(n_sensory, n_inter, n_command, n_motor,
     sensory_in, rec_sensory, sensory_inter, sensory_command, sensory_motor,
     inter_in, rec_inter, inter_command, inter_motor,                       # inter_in = sensory_out
     command_in, rec_command, command_motor,                   # command_in = inter_out
     motor_in, rec_motor,
-    sens_mask, sens_pol)
+    sens_mask, sens_pol, T)
   Wiring(n_in,n_out,n_sensory, n_inter,n_command,n_motor,n_total,sensory_inter,inter_command,rec_command,command_motor,sens_mask,syn_mask,sens_pol,syn_pol)
 end
 
 
-function NCPWiring(n_in::Int, n_out::Int;
+function NCPWiring(n_in::Int, n_out::Int, T::TYPE=Float32;
                 n_sensory=2, n_inter=3, n_command=5, n_motor=1,
                 sensory_in=-1, rec_sensory=0, sensory_inter=2, sensory_command=0, sensory_motor=0,
                 inter_in=0, rec_inter=2, inter_command=2, inter_motor=0,                       # inter_in = sensory_out
                 command_in=0, rec_command=1, command_motor=3,                   # command_in = inter_out
-                motor_in=0, rec_motor=1, T=Float32)                                     # motor_in = command_out, motor_out = out
+                motor_in=0, rec_motor=1) where TYPE <: AbstractFloat                                     # motor_in = command_out, motor_out = out
 
   n_total   = n_sensory + n_inter + n_command + n_motor
   sens_mask = zeros(T, n_in, n_total)
@@ -251,7 +242,7 @@ function NCPWiring(n_in::Int, n_out::Int;
     inter_in, rec_inter, inter_command, inter_motor,                       # inter_in = sensory_out
     command_in, rec_command, command_motor,                   # command_in = inter_out
     motor_in, rec_motor,
-    sens_mask, sens_pol, create_input_syns=n_in)
+    sens_mask, sens_pol, n_in, T)
 
   Wiring(n_in,n_out,n_sensory, n_inter,n_command,n_motor,n_total,sensory_inter,inter_command,rec_command,command_motor,sens_mask,syn_mask,sens_pol,syn_pol)
 end
@@ -265,7 +256,7 @@ function create_ncp_wiring(n_sensory, n_inter, n_command, n_motor,
   sensory_inter,
   inter_command,                       # inter_in = sensory_out
   rec_command, command_motor,
-  sens_mask, sens_pol; T=Float32)
+  sens_mask, sens_pol, T=Float32) #where TYPE <: AbstractFloat
 
   n_total   = n_sensory + n_inter + n_command + n_motor
 
@@ -301,9 +292,8 @@ function connect_command_motor!(src_range, dst_range, k, syn_mask, syn_pol)
   end
 end
 
-add_synapse!(s, t, mask, pol) = add_synapse!(s, t, [-1,1][rand(1:2)], mask, pol)
-function add_synapse!(s, t, p, mask, pol)
-  mask[s, t] = 1
+function add_synapse!(s, t, mask, pol, p = random_polarity())
+  mask[s, t] = one(eltype(mask))
   pol[s, t] = p
 end
 
@@ -340,7 +330,7 @@ end
 
 
 
-function plot(wiring::Wiring)
+function plot_wiring(wiring::Wiring)
     display(heatmap(wiring.sens_mask))
     display(heatmap(wiring.sens_pol))
     display(heatmap(wiring.syn_mask))
@@ -351,20 +341,20 @@ end
 
 
 
-using Plots
-w = LTC.DiagSensNCPWiring(8,8,orig=true,
-  n_sensory=8, n_inter=5, n_command=5, n_motor=8,
-  sensory_inter=3, inter_command=2, command_motor=3)
-w.syn_mask
-heatmap(w.syn_mask)
-heatmap(w.syn_pol)
-heatmap(w.sens_mask)
-heatmap(w.sens_pol)
-
-
-
-w = LTC.FWiring(2,1)
-heatmap(w.syn_mask)
-heatmap(w.syn_pol)
-heatmap(w.sens_mask)
-heatmap(w.sens_pol)
+# using Plots
+# w = LTC.DiagSensNCPWiring(8,8,orig=true,
+#   n_sensory=8, n_inter=5, n_command=5, n_motor=8,
+#   sensory_inter=3, inter_command=2, command_motor=3)
+# w.syn_mask
+# heatmap(w.syn_mask)
+# heatmap(w.syn_pol)
+# heatmap(w.sens_mask)
+# heatmap(w.sens_pol)
+#
+#
+#
+# w = LTC.FWiring(2,1)
+# heatmap(w.syn_mask)
+# heatmap(w.syn_pol)
+# heatmap(w.sens_mask)
+# heatmap(w.sens_pol)

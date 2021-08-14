@@ -6,10 +6,10 @@ using LTC: rand_uniform
 
 @register NNlib.sigmoid(t)
 
-function SigmoidSynapse(T=Float32; name, E=rand_uniform(T, -0.3, 0.3))
+function SigmoidSynapse(; name, T=Float32, E=rand_uniform(T, -0.8, 0.8))
   vars = @variables I(t), v_pre(t), v_post(t)
   ps = @parameters begin
-    μ = rand_uniform(T, 0.3, 0.8), [lower = T(0.01), upper = T(1.0)]
+    μ = rand_uniform(T, 0.1, 0.8), [lower = T(0.01), upper = T(1.0)]
     σ = rand_uniform(T, 3, 8), [lower = T(1.0), upper = 10.0]
     G = rand_uniform(T, 0.001, 1), [lower = T(0), upper = T(2.1)]
     E = E, [lower = T(-1.1), upper = T(1.1)]
@@ -20,7 +20,7 @@ function SigmoidSynapse(T=Float32; name, E=rand_uniform(T, -0.3, 0.3))
   ODESystem(eqs, t, vars, ps; name)
 end
 
-function LeakChannel(T=Float32; name)
+function LeakChannel(; name, T=Float32)
   vars = @variables I(t), v(t)
   ps = @parameters begin
     G = rand_uniform(T, 0.001, 1), [lower = T(0), upper = T(2.1)]
@@ -32,7 +32,7 @@ function LeakChannel(T=Float32; name)
   ODESystem(eqs, t, vars, ps; name)
 end
 
-function Neuron(T=Float32; name)
+function Neuron(;name, T=Float32)
   @variables begin
     (v(t) = rand_uniform(T, 0.001, 0.2)), [lower = T(0), upper = T(2.0)]
     (I_comps(t))
@@ -49,14 +49,14 @@ function Neuron(T=Float32; name)
   ODESystem(eqs, t, [v, I_comps], ps; systems, name)
 end
 
-function Net(wiring, T=Float32; name)
+function Net(wiring::Wiring{T}; name) where T <: AbstractFloat
   vars = Num[]
   ps = Num[]
   eqs = Equation[]
   systems = ODESystem[]
 
   N = wiring.n_total
-  inputs, outputs = create_pins(wiring.n_in, wiring.n_out)
+  inputs, outputs = create_pins(wiring)
   push!(systems, inputs...)
 
   n = 1

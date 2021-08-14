@@ -10,7 +10,7 @@ function get_dl(T; seq_len=32, batchsize=16)
     all_files = ["$(data_dir)/$(f)" for f in all_files]
     valid_files = all_files[1:5]
     test_files = all_files[6:15]
-    train_files = all_files[16:16]
+    train_files = all_files[16:17]
 
 
 

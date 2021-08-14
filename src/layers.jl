@@ -1,6 +1,159 @@
+struct Mapper{V,F}
+  W::V
+  b::V
+  p::V
+  σ::F
+  paramlength::Int
+
+  function Mapper(W, b, p, σ, paramlength)
+    new{typeof(W),typeof(σ)}(W, b, p, σ, paramlength)
+  end
+end
+MapperIn(wiring::Wiring{T},σ=identity) where T = Mapper(wiring.n_in,σ,T)
+MapperOut(wiring::Wiring{T},σ=identity) where T = Mapper(wiring.n_out,σ,T)
+function Mapper(n::Int,σ=identity,T=Float32) #where TYPE# <: AbstractArray
+  init=dims->ones(T,dims...)
+  bias=dims->zeros(T,dims...)
+  W = init(n)
+  b = bias(n) #.+ T(1e-5) # scaling needs initial guess != 0
+  p = vcat(W,b)
+  Mapper(W, b, p, σ, length(p))
+end
+function (m::Mapper{<:AbstractArray{T},F})(x::AbstractArray{T}, p=m.p) where {T,F}
+  Wl = size(m.W,1)
+  W = @view p[1 : Wl]
+  b = @view p[Wl + 1 : end]
+  m.σ.(W .* x .+ b)
+end
+(m::Mapper{<:AbstractMatrix{T},F})(x::AbstractArray{T}, p=m.p) where {T,F} = reshape(m(reshape(x, size(x,1), :)), :, size(x)[2:end]...)
+Base.show(io::IO, m::Mapper) = print(io, "Mapper(", length(m.W), ", ", m.σ, ")")
+initial_params(m::Mapper) = m.p
+paramlength(m::Mapper) = m.paramlength
+Flux.@functor Mapper (p,)
+Flux.trainable(m::Mapper) = (m.p,)
+function get_bounds(m::Mapper{<:AbstractArray{T},F}, _T=nothing) where {T,F}
+  lb = T[]
+  ub = T[]
+  for _ in 1:length(m.W)
+    push!(lb, -10.1)
+    push!(ub, 10.1)
+  end
+  for _ in 1:length(m.b)
+    push!(lb, -10.1)
+    push!(ub, 10.1)
+  end
+  lb, ub
+end
+
+
+
+struct FluxLayerWrapper{FL,P,RE}
+  layer::FL
+  p::P
+  re::RE
+  paramlength::Int
+
+  FluxLayerWrapper(layer,p,re,paramlength) = new{typeof(layer),typeof(p),typeof(re)}(layer,p,re,paramlength)
+end
+function FluxLayerWrapper(layer)
+  p, re = Flux.destructure(layer)
+  FluxLayerWrapper(layer, p, re, length(p))
+end
+(m::FluxLayerWrapper)(x, p) = m.re(p)(x)
+Base.show(io::IO, m::FluxLayerWrapper) = print(io, "FluxLayerWrapper(", m.layer, ")")
+initial_params(m::FluxLayerWrapper) = m.p
+paramlength(m::FluxLayerWrapper) = m.paramlength
+get_bounds(m::FluxLayerWrapper, T=Float32) = get_bounds(m.layer, T)
+
+
+
+# WIP
+struct Broadcaster{M,P}
+  model::M
+  p::P
+  paramlength::Int
+end
+function Broadcaster(model)
+  p = initial_params(model)
+  paramlength = length(p)
+  Broadcaster(model,p,paramlength)
+end
+(m::Broadcaster)(xs, p) = [m.model(x, p) for x in xs] # mapfoldl(x -> m.model(x, p), vcat, xs)
+Base.show(io::IO, m::Broadcaster) = print(io, "Broadcaster(", m.model, ")")
+initial_params(m::Broadcaster) = m.p
+paramlength(m::Broadcaster) = m.paramlength
+# Flux.@functor Broadcaster #(model,)
+Flux.trainable(m::Broadcaster) = (m.model,)
+# get_bounds(m::Broadcaster; T=Float32) = get_bounds(m.model; T)
+
+
+
+
+
+# paramlength() needed for Flux layers
+paramlength(m::Flux.Dense) = length(m.weight) + length(m.bias)
+paramlength(m::Union{Flux.Chain,FastChain}) = sum([paramlength(l) for l in m.layers])
+
+
+get_bounds(l, T) = T[], T[] # For anonymous functions as layer
+function get_bounds(m::Union{Flux.Chain, FastChain}, T)
+  lb = vcat([get_bounds(layer, T)[1] for layer in m.layers]...)
+  ub = vcat([get_bounds(layer, T)[2] for layer in m.layers]...)
+  # lb = reduce(vcat, [get_bounds(layer)[1] for layer in m.layers])
+  # ub = reduce(vcat, [get_bounds(layer)[2] for layer in m.layers])
+  lb, ub
+end
+function get_bounds(m::FastDense{F,<:AbstractMatrix{T}}, _T=nothing) where {F,T}
+  # T = eltype(m.initial_params())
+  lb = T[]
+  ub = T[]
+  for _ in 1:m.out*m.in # weights
+    push!(lb, -10.1)
+    push!(ub, 10.1)
+  end
+  if m.bias
+    for _ in 1:m.out
+      push!(lb, -10.1)
+      push!(ub, 10.1)
+    end
+  end
+  lb, ub
+end
+
+function get_bounds(m::Flux.Dense{F, <:AbstractMatrix{T}, B}, _T=nothing) where {F,T,B}
+  lb = T[]
+  ub = T[]
+  for _ in 1:length(m.weight)
+    push!(lb, -10.1)
+    push!(ub, 10.1)
+  end
+  for _ in 1:length(m.bias)
+    push!(lb, -10.1)
+    push!(ub, 10.1)
+  end
+  lb, ub
+end
+
+
+# TODO: overload reset!
+reset_state!(m,p) = nothing
+
+function reset_state!(m::Union{Flux.Chain, FastChain}, p)
+  start_idx = 1
+  for l in m.layers
+    pl = paramlength(l)
+    p_layer = p[start_idx:start_idx+pl-1]
+    reset_state!(l, p_layer)
+    start_idx += pl
+  end
+end
+
+
+
+
 # https://github.com/SciML/DiffEqFlux.jl/issues/432#issuecomment-708079051
 function destructure(m; cache = IdDict())
-  xs = Zygote.Buffer([])
+  xs = GalacticOptim.Zygote.Buffer([])
   Flux.fmap(m) do x
     if x isa AbstractArray
       push!(xs, x)
@@ -21,144 +174,37 @@ function _restructure(m, xs; cache = IdDict())
   end
 end
 
-paramlength(m::Flux.Dense) = length(m.weight) + length(m.bias)
-
-
-
-struct Broadcaster{M,P}
-  model::M
-  p::P
-  paramlength::Int
-end
-function Broadcaster(model)
-  p = initial_params(model)
-  paramlength = length(p)
-  Broadcaster(model,p,paramlength)
-end
-(m::Broadcaster)(xs, p) = [m.model(x, p) for x in xs] # mapfoldl(x -> m.model(x, p), vcat, xs)
-
-Base.show(io::IO, m::Broadcaster) = print(io, "Broadcaster(", m.model, ")")
-initial_params(m::Broadcaster) = m.p
-paramlength(m::Broadcaster) = m.paramlength
-
-# Flux.@functor Broadcaster #(model,)
-Flux.trainable(m::Broadcaster) = (m.model,)
-
-struct Mapper{V,F}
-  W::V
-  b::V
-  p::V
-  σ::F
-  paramlength::Int
-
-  function Mapper(W::V, b::V, p::V, σ::F=identity) where {V<:AbstractVector, F}
-    paramlength = length(p)
-    new{V,F}(W, b, p, σ, paramlength)
-  end
-end
-
-function Mapper(in::Integer,σ=identity,init=dims->ones(Float32,dims...),bias=dims->zeros(Float32,dims...))
-  W = init(in)
-  b = bias(in) #.+ 0.0001f0 # scaling needs initial guess != 0
-  p = vcat(W,b)
-  Mapper(W, b, p, σ)
-end
-function (m::Mapper)(x::AbstractMatrix, p=m.p)
-  Wl = size(m.W,1)
-  W = @view p[1 : Wl]
-  b = @view p[Wl + 1 : end]
-  m.σ.(W .* x .+ b)
-end
-(m::Mapper)(x::AbstractArray, p=m.p) = reshape(m(reshape(x, size(x,1), :)), :, size(x)[2:end]...)
-Base.show(io::IO, m::Mapper) = print(io, "Mapper(", length(m.W), ", ", m.σ, ")")
-initial_params(m::Mapper) = m.p
-paramlength(m::Mapper) = m.paramlength
-
-Flux.@functor Mapper (p,)
-Flux.trainable(m::Mapper) = (m.p,)
-
-
-struct FluxLayerWrapper{FL,P,RE}
-  layer::FL
-  p::P
-  re::RE
-  paramlength::Int
-end
-function FluxLayerWrapper(layer)
-  p, re = Flux.destructure(layer)
-  FluxLayerWrapper(layer, p, re, length(p))
-end
-(m::FluxLayerWrapper)(x, p) = m.re(p)(x)
-Base.show(io::IO, m::FluxLayerWrapper) = print(io, "FluxLayerWrapper(", layer, ")")
-initial_params(m::FluxLayerWrapper) = m.p
-paramlength(m::FluxLayerWrapper) = m.paramlength
-
-
-reset_state!(m,p) = nothing
-
-function reset_state!(m::Union{Flux.Chain, FastChain}, p)
-  start_idx = 1
-  for l in m.layers
-    pl = paramlength(l)
-    p_layer = p[start_idx:start_idx+pl-1]
-    reset_state!(l, p_layer)
-    start_idx += pl
-  end
-end
-
-get_bounds(m) = Float32[],Float32[]
-get_bounds(m::Broadcaster) = get_bounds(m.model)
-get_bounds(m::FluxLayerWrapper) = get_bounds(m.layer)
-
-function get_bounds(m::Mapper)
-  T = eltype(m.W)
-  lb = T[]
-  ub = T[]
-  for _ in 1:length(m.W)
-    push!(lb, -10.1)
-    push!(ub, 10.1)
-  end
-  for _ in 1:length(m.b)
-    push!(lb, -10.1)
-    push!(ub, 10.1)
-  end
-  lb, ub
-end
-
-function get_bounds(m::Union{Flux.Chain, FastChain})
-  lb = vcat([get_bounds(layer)[1] for layer in m.layers]...)
-  ub = vcat([get_bounds(layer)[2] for layer in m.layers]...)
-  lb, ub
-end
-
-function get_bounds(m::FastDense)
-  T = eltype(m.initial_params())
-  lb = T[]
-  ub = T[]
-  for _ in 1:m.out*m.in # weights
-    push!(lb, -10.1)
-    push!(ub, 10.1)
-  end
-  if m.bias
-    for _ in 1:m.out
-      push!(lb, -10.1)
-      push!(ub, 10.1)
-    end
-  end
-  lb, ub
-end
-
-function get_bounds(m::Flux.Dense)
-  T = eltype(m.weights)
-  lb = T[]
-  ub = T[]
-  for _ in 1:length(m.weights)
-    push!(lb, -10.1)
-    push!(ub, 10.1)
-  end
-  for _ in 1:length(m.bias)
-    push!(lb, -10.1)
-    push!(ub, 10.1)
-  end
-  lb, ub
-end
+# GalacticOptim.Zygote.@adjoint function (f::Mapper)(x,p)
+#   n_in = size(f.W,1)
+#   W = @view p[1:n_in]
+#   b = @view p[n_in+1:end]
+#   r = W .* x .+ b
+#   # ifgpufree(b)
+#
+#   y = f.σ.(r)
+#
+#   function Mapper_adjoint(ȳ)
+#     if typeof(f.σ) <: typeof(tanh)
+#       zbar = ȳ .* (1 .- y.^2)
+#     elseif typeof(f.σ) <: typeof(identity)
+#       zbar = ȳ
+#     else
+#       zbar = ȳ .* ForwardDiff.derivative.(f.σ,r)
+#     end
+#     Wbar = zbar * x'
+#     bbar = zbar
+#     xbar = W' * zbar
+#     pbar = if f.bias == true
+#         tmp = typeof(bbar) <: AbstractVector ?
+#                          vec(vcat(vec(Wbar),bbar)) :
+#                          vec(vcat(vec(Wbar),sum(bbar,dims=2)))
+#         # ifgpufree(bbar);
+#         tmp
+#     else
+#         vec(Wbar)
+#     end
+#     ifgpufree(Wbar); ifgpufree(r)
+#     nothing,xbar,pbar
+#   end
+#   y,Mapper_adjoint
+# end

@@ -11,44 +11,38 @@ using GalacticOptim
 using ModelingToolkit
 using Flux
 using NNlib: sigmoid
-
-# using CatViews
-
-# using DiffEqCallbacks
-# import DiffEqCallbacks: SavedValues
-import DiffEqCallbacks: PeriodicCallback, PresetTimeCallback
+using ForwardDiff
 import LinearAlgebra: Diagonal
-import DataInterpolations: ConstantInterpolation
+import DataInterpolations: ConstantInterpolation, LinearInterpolation
 using Random
 
 rand_uniform(TYPE, lb,ub,dims...) = TYPE.(rand(Uniform(lb,ub),dims...))
 rand_uniform(TYPE, lb,ub) = rand_uniform(TYPE, lb,ub,1)[1]
 
-#Zygote.@nograd rand_uniform, reshape
+add_dim(x::Array{T, N}) where {T,N} = reshape(x, Val(N+1))
+
+
+
+include("systems/ncp/wiring.jl")
 
 include("layers.jl")
 include("mtk_recur.jl")
-include("mtk_recur_autonomous.jl")
-include("mtk_node_tvp.jl")
-include("mtk_node_p.jl")
 include("mtk_node.jl")
 include("optimization.jl")
 include("losses.jl")
 include("variables.jl")
 
 include("data.jl")
-export create_mini_batches
 
 # include("mkt_sysstruct.jl")
 # include("zygote.jl")
 
 include("systems/systems.jl")
 include("systems/ncp/ncp_sys_gen.jl")
-include("systems/ncp/wiring.jl")
 
 
-export MTKRecur, MTKCell, Mapper, Broadcaster, get_bounds
-export MTKRecurAut, MTKCellAut
+
+export get_bounds
 export initial_params, paramlength
 export reset_state!
 export optimize

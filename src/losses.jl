@@ -23,18 +23,25 @@ function loss_seq(p, m::FastChain, _x, _y)
   x = _x
   y = _y
 
+
   LTC.reset_state!(m, p)
 
   ŷb = Flux.Zygote.Buffer([y[1]], size(y,1))
   # ŷb = Array{typeof(y[1])}(undef,size(y,1))
+  # losses = Flux.Zygote.Buffer(rand(Float32,size(y,1),size(y[1],2)), size(y,1),size(y[1],2))
   for i in 1:size(x,1)
     xi = x[i]
     ŷi = m(xi, p)
     Inf32 ∈ ŷi && return Inf32, copy(ŷb), y # TODO: what if a layer after MTKRecur can handle Infs?
     # Inf32 ∈ ŷi && return Inf32, ŷb, y # TODO: what if a layer after MTKRecur can handle Infs?
     ŷb[i] = ŷi
+    # losses[i,:] = sum((ŷi .- y[i]) .^ 2, dims=1)[1,:]
   end
   ŷ = copy(ŷb)
+  # lossesc = copy(losses)
+  # l = mean(sum(lossesc,dims=1)[1,:])
+  l = Flux.Losses.mse(Flux.stack(ŷ,3),Flux.stack(y,3), agg=mean)
+  return l, ŷ, y
   # ŷ = ŷb
   # @show size(ŷ)
   # @show size(ŷ[1])
@@ -50,34 +57,61 @@ end
 
 
 
+function loss_seq_node(p, re, x, y)
 
-function loss_seq_node(p, m::FastChain, _x, _y)
-  # ŷ = m.(x, [p])
-  # x = _x[1]
-  # y = _y[1]
+  m = re(p)
+  LTC.reset_state!(m, p)
 
-  # x = Flux.stack(_x, 2)
-  x = _x
-  y = _y
+  ŷ = m(x)
+
+  Inf ∈ ŷ && return Inf32, ŷ, y
+  NaN ∈ ŷ && return Inf32, ŷ, y
+
+  return mean(Flux.Losses.mse.(Flux.unstack(ŷ,2),Flux.unstack(y,2), agg=mean)), ŷ, y
+end
+
+function loss_seq_node(p, m::FastChain, x, y)
+
+  LTC.reset_state!(m, p)
+  ŷ = m(x, p)
+
+  Inf ∈ ŷ && return Inf32, ŷ, y
+  NaN ∈ ŷ && return Inf32, ŷ, y
+
+  return mean(Flux.Losses.mse.(Flux.unstack(ŷ,2),Flux.unstack(y,2), agg=mean)), ŷ, y
+end
+
+
+function loss_seq_node2(p, m::FastChain, x, y)
+
 
   LTC.reset_state!(m, p)
 
-  _ŷ = m(x, p)
+  ŷ = m(x, p)
 
-  Inf ∈ _ŷ && return Inf32, _ŷ, y
-  NaN ∈ _ŷ && return Inf32, _ŷ, y
+  y = Flux.stack(y,2)
+  ŷ = Flux.stack(ŷ,2)
 
-  # ŷ = Flux.unstack(_ŷ, 2)[2:end]
-  ŷ = _ŷ#[2:end]
+  Inf ∈ ŷ && return Inf32, ŷ, y
+  NaN ∈ ŷ && return Inf32, ŷ, y
 
-  # ŷ = ŷb
-  # @show size(ŷ)
-  # @show size(ŷ[1])
-  # mean(sum.(abs2, (ŷ .- y))), ŷ, y
+  return mean(Flux.Losses.mse.(Flux.unstack(ŷ,2),Flux.unstack(y,2), agg=mean)), ŷ, y
+  # return Flux.Losses.mse(ŷ[end],y[end], agg=mean), ŷ, y
+end
 
-  # ŷ_probs = [ŷ[i][1,1] for i in 1:length(ŷ)]
-  # y_probs = [y[i][1,1] for i in 1:length(y)]
-  # return Flux.Losses.logitbinarycrossentropy(ŷ_probs, y_probs, agg=mean), ŷ, y
+function loss_seq_node2(p, re, x, y)
+
+
+  m = re(p)
+  LTC.reset_state!(m, p)
+
+  ŷ = m(x)
+
+  y = Flux.stack(y,2)
+  ŷ = Flux.stack(ŷ,2)
+
+  Inf ∈ ŷ && return Inf32, ŷ, y
+  NaN ∈ ŷ && return Inf32, ŷ, y
 
   return mean(Flux.Losses.mse.(Flux.unstack(ŷ,2),Flux.unstack(y,2), agg=mean)), ŷ, y
   # return Flux.Losses.mse(ŷ[end],y[end], agg=mean), ŷ, y
