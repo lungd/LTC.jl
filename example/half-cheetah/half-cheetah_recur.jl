@@ -25,10 +25,12 @@ function train_cheetah(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(aut
   cb = function (p,l,ŷ,y;doplot=true)
     display(l)
     if doplot
-      fig = plot(Flux.stack(y,2)[1,:,1], label="y1")
-      plot!(fig, Flux.stack(y,2)[2,:,1], label="y2")
-      plot!(fig, Flux.stack(ŷ,2)[1,:,1], label="ŷ1")
-      plot!(fig, Flux.stack(ŷ,2)[2,:,1], label="ŷ2")
+      y = Flux.stack(y,2)
+      ŷ = Flux.stack(ŷ,2)
+      fig = plot(y[1,:,1], label="y1")
+      plot!(fig, y[2,:,1], label="y2")
+      plot!(fig, ŷ[1,:,1], label="ŷ1")
+      plot!(fig, ŷ[2,:,1], label="ŷ2")
       display(fig)
     end
     return false

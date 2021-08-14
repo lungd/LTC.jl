@@ -25,10 +25,12 @@ function train_cheetah(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(aut
   cb = function (p,l,ŷ,y;doplot=true)
     display(l)
     if doplot
-      fig = plot(Flux.stack(y,2)[1,:,1], label="y1")
-      plot!(fig, Flux.stack(y,2)[2,:,1], label="y2")
-      plot!(fig, Flux.stack(ŷ,2)[1,:,1], label="ŷ1")
-      plot!(fig, Flux.stack(ŷ,2)[2,:,1], label="ŷ2")
+      y = Flux.stack(y,2)
+      ŷ = Flux.stack(ŷ,2)
+      fig = plot(y[1,:,1], label="y1")
+      plot!(fig, y[2,:,1], label="y2")
+      plot!(fig, ŷ[1,:,1], label="ŷ1")
+      plot!(fig, ŷ[2,:,1], label="ŷ2")
       display(fig)
     end
     return false
@@ -39,7 +41,7 @@ function train_cheetah(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(aut
   train_dl, _, _, _ = get_dl(T, batchsize=batchsize, seq_len=seq_len)
   train_dl = ncycle(train_dl, epochs)
 
-  wiring = LTC.FWiring(17,5)
+  wiring = LTC.FWiring(17,8)
 
   plot_wiring(wiring)
 
@@ -51,7 +53,7 @@ function train_cheetah(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(aut
                     Flux.Dense(randn(T, 17, wiring.n_out), true),
   )
 
-  opt = Flux.Optimiser(ClipValue(1.00), ADAM(0.02))
+  opt = Flux.Optimiser(ClipValue(1.00), ADAM(0.01))
   AD = GalacticOptim.AutoZygote()
   LTC.optimize(model, LTC.loss_seq, cb, opt, AD, train_dl), model
 end
