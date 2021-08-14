@@ -31,7 +31,7 @@ function get_bounds(m::MTKNODE{C,<:AbstractArray{T},S}, _T::Type=nothing; defaul
   for v in vcat(params,states)
     contains(string(v), "InPin") && continue
 		contains(string(v), "OutPin") && continue
-		hasmetadata(v, VariableOutput) && continue
+		hasmetadata(v, ModelingToolkit.VariableOutput) && continue
     lower = hasmetadata(v, VariableLowerBound) ? getmetadata(v, VariableLowerBound) : default_lb
     upper = hasmetadata(v, VariableUpperBound) ? getmetadata(v, VariableUpperBound) : default_ub
     push!(cell_lb, lower)

@@ -13,6 +13,13 @@ gr()
 
 include("half_cheetah_data_loader.jl")
 
+function plot_wiring(wiring::Wiring)
+  display(heatmap(wiring.sens_mask))
+  display(heatmap(wiring.sens_pol))
+  display(heatmap(wiring.syn_mask))
+  display(heatmap(wiring.syn_pol))
+end
+
 function train_cheetah(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)); T = Float32)
 
   cb = function (p,l,pred,y;doplot=true)
@@ -34,7 +41,7 @@ function train_cheetah(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(aut
 
   wiring = LTC.FWiring(17,5)
 
-  LTC.plot_wiring(wiring)
+  plot_wiring(wiring)
 
   net = LTC.Net(wiring, name=:net)
   sys = ModelingToolkit.structural_simplify(net)
@@ -48,5 +55,5 @@ function train_cheetah(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(aut
   LTC.optimize(model, LTC.loss_seq, cb, opt, AD, train_dl), model
 end
 
-@time res1,model = train_cheetah(1)
-@time res1,model = train_cheetah(100)
+@time train_cheetah(1)
+@time train_cheetah(100)

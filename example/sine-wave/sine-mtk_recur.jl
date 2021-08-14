@@ -13,7 +13,13 @@ gr()
 
 include("sine_wave_dataloader.jl")
 
-# function train_sine(n, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=EnzymeVJP());)
+function plot_wiring(wiring::Wiring)
+  display(heatmap(wiring.sens_mask))
+  display(heatmap(wiring.sens_pol))
+  display(heatmap(wiring.syn_mask))
+  display(heatmap(wiring.syn_pol))
+end
+
 function train_sine(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)); T=Float32)
 
   cb = function (p,l,pred,y;doplot=true)
@@ -29,7 +35,7 @@ function train_sine(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(autoja
   batchsize = 1
 
   wiring = LTC.FWiring(2,8)
-  LTC.plot_wiring(wiring)
+  plot_wiring(wiring)
 
   net = LTC.Net(wiring, name=:net)
   sys = ModelingToolkit.structural_simplify(net)
@@ -40,23 +46,15 @@ function train_sine(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(autoja
 
   train_dl = generate_2d_arr_data(T)
   opt = GalacticOptim.Flux.Optimiser(ClipValue(0.8), ADAM(0.02))
-  # opt = Optim.LBFGS()
-  # opt = BBO()
-  # opt = ParticleSwarm(;lower=lb, upper=ub)
-  # opt = Fminbox(GradientDescent())
   AD = GalacticOptim.AutoZygote()
-  # AD = GalacticOptim.AutoModelingToolkit()
 
-  # return model
-
-  sol = LTC.optimize(model, LTC.loss_seq, cb, opt, AD, ncycle(train_dl,epochs); T)
-
+  LTC.optimize(model, LTC.loss_seq, cb, opt, AD, ncycle(train_dl,epochs); T), model
 end
 
 # 36.107867 seconds (111.82 M allocations: 6.876 GiB, 3.87% gc time)
 
-@time model = train_sine(1)
-@time model = train_sine(100)
+@time train_sine(1)
+@time train_sine(100)
 
 # @time model = train_sine(100, VCABM(), InterpolatingAdjoint(checkpointing=true, autodiff=false, autojacvec=false))
 # @time model = train_sine(100, VCABM(), InterpolatingAdjoint(checkpointing=true, autodiff=false, autojacvec=ReverseDiffVJP(true))) #  38.617758 seconds (113.64 M allocations: 7.143 GiB, 3.63% gc time)

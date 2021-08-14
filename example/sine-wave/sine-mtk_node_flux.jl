@@ -14,6 +14,13 @@ gr()
 
 include("sine_wave_dataloader.jl")
 
+function plot_wiring(wiring::Wiring)
+  display(heatmap(wiring.sens_mask))
+  display(heatmap(wiring.sens_pol))
+  display(heatmap(wiring.syn_mask))
+  display(heatmap(wiring.syn_pol))
+end
+
 function train_sine_node_s(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)); T=Float32)
 
   cb = function (p,l,pred,y;doplot=true)
@@ -39,8 +46,8 @@ function train_sine_node_s(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint
 
   opt = GalacticOptim.Flux.Optimiser(ClipValue(0.8), ADAM(0.02))
   AD = GalacticOptim.AutoZygote()
-  sol = LTC.optimize(model, LTC.loss_seq_node, cb, opt, AD, ncycle(train_dl,epochs); T)
+  LTC.optimize(model, LTC.loss_seq_node, cb, opt, AD, ncycle(train_dl,epochs); T), model
 end
 
-@time model = train_sine_node_s(1)
-@time model = train_sine_node_s(100)
+@time train_sine_node_s(1)
+@time train_sine_node_s(100)

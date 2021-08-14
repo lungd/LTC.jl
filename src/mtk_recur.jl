@@ -30,7 +30,7 @@ function get_bounds(m::RecurMTK)
   for v in vcat(params,states)
     contains(string(v), "InPin") && continue
     contains(string(v), "OutPin") && continue
-    hasmetadata(v, VariableOutput) && continue
+    hasmetadata(v, ModelingToolkit.VariableOutput) && continue
     lower = hasmetadata(v, VariableLowerBound) ? getmetadata(v, VariableLowerBound) : -Inf
     upper = hasmetadata(v, VariableUpperBound) ? getmetadata(v, VariableUpperBound) : Inf
     push!(cell_lb, lower)

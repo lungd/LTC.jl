@@ -330,12 +330,7 @@ end
 
 
 
-function plot_wiring(wiring::Wiring)
-    display(heatmap(wiring.sens_mask))
-    display(heatmap(wiring.sens_pol))
-    display(heatmap(wiring.syn_mask))
-    display(heatmap(wiring.syn_pol))
-end
+
 
 
 

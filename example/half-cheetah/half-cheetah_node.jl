@@ -13,6 +13,13 @@ gr()
 
 include("half_cheetah_data_loader.jl")
 
+function plot_wiring(wiring::Wiring)
+  display(heatmap(wiring.sens_mask))
+  display(heatmap(wiring.sens_pol))
+  display(heatmap(wiring.syn_mask))
+  display(heatmap(wiring.syn_pol))
+end
+
 function train_cheetah_node(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)); T=Float32)
 
   cb = function (p,l,pred,y;doplot=true)
@@ -54,16 +61,9 @@ function train_cheetah_node(epochs, solver=VCABM(), sensealg=InterpolatingAdjoin
   @show size(fx[1])
   @show size(fx[1][1])
 
-  # wiring = LTC.DiagSensNCPWiring(17, 17, T;
-  #   n_sensory=17, n_inter=6, n_command=6, n_motor=17, # total = 17
-  #   rec_sensory=0, sensory_inter=4, sensory_command=0, sensory_motor=0,
-  #   rec_inter=0, inter_command=3, inter_motor=0,                       # inter_in = sensory_out
-  #   rec_command=4, command_motor=4,                   # command_in = inter_out
-  #   rec_motor=0, orig=true)
-
   wiring = LTC.FWiring(17,5)
 
-  LTC.plot_wiring(wiring)
+  plot_wiring(wiring)
 
   net = LTC.Net(wiring, name=:net)
   sys = ModelingToolkit.structural_simplify(net)

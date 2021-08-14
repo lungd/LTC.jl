@@ -13,6 +13,13 @@ gr()
 
 include("sine_wave_dataloader.jl")
 
+function plot_wiring(wiring::Wiring)
+  display(heatmap(wiring.sens_mask))
+  display(heatmap(wiring.sens_pol))
+  display(heatmap(wiring.syn_mask))
+  display(heatmap(wiring.syn_pol))
+end
+
 function train_sine(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true));T=Float32)
 
   epoch = 1
@@ -35,7 +42,7 @@ function train_sine(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(autoja
   batchsize = 1
   wiring = LTC.FWiring(2,8)
 
-  LTC.plot_wiring(wiring)
+  plot_wiring(wiring)
   train_dl = generate_2d_arr_data(T)
 
   net = LTC.Net(wiring, name=:net)
@@ -48,7 +55,7 @@ function train_sine(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(autoja
 
   opt = GalacticOptim.Flux.Optimiser(ClipValue(0.5), ADAM(0.01))
   AD = GalacticOptim.AutoZygote()
-  LTC.optimize(model, LTC.loss_seq, cb, opt, AD, ncycle(train_dl, epochs))
+  LTC.optimize(model, LTC.loss_seq, cb, opt, AD, ncycle(train_dl, epochs)), model
 end
 
 @time train_sine(1)
