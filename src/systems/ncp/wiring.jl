@@ -31,7 +31,7 @@ random_polarity(p=[-1,1,1]) = p[rand(1:length(p))]
 # get_n_in(m::Wiring) = m.n_in
 # get_n_total(m::Wiring) = m.n_total
 
-function FWiring(in::Int, out::Int, T=Float32;) #where TYPE <: AbstractFloat
+function FWiring(in::Int, out::Int, T::DataType=Float32;) #where TYPE <: AbstractFloat
   n_total   = out
 
   sens_mask = ones(T, in, n_total)
@@ -85,7 +85,7 @@ function create_wiring(n_sensory, n_inter, n_command, n_motor,
   inter_in, rec_inter, inter_command, inter_motor,                       # inter_in = sensory_out
   command_in, rec_command, command_motor,                   # command_in = inter_out
   motor_in, rec_motor,
-  sens_mask, sens_pol, create_input_syns=0, T=Float32;)# where TYPE <: AbstractFloat
+  sens_mask, sens_pol, create_input_syns=0, T::DataType=Float32;)# where TYPE <: AbstractFloat
 
   n_total   = n_sensory + n_inter + n_command + n_motor
 
@@ -128,7 +128,7 @@ function create_wiring(n_sensory, n_inter, n_command, n_motor,
   return sens_mask, syn_mask, sens_pol, syn_pol
 end
 
-function DiagSensNCPWiring(n_in::Int, n_out::Int, T=Float32;
+function DiagSensNCPWiring(n_in::Int, n_out::Int, T::DataType=Float32;
                 n_sensory=2, n_inter=3, n_command=5, n_motor=1,
                 sensory_in=-1, rec_sensory=0, sensory_inter=2, sensory_command=0, sensory_motor=0,
                 inter_in=0, rec_inter=2, inter_command=2, inter_motor=0,                       # inter_in = sensory_out
@@ -161,7 +161,7 @@ function DiagSensNCPWiring(n_in::Int, n_out::Int, T=Float32;
   Wiring(n_in,n_out,n_sensory, n_inter,n_command,n_motor,n_total,sensory_inter,inter_command,rec_command,command_motor,sens_mask,syn_mask,sens_pol,syn_pol)
 end
 
-function FullSensNCPWiring(n_in::Int, n_out::Int, T::TYPE=Float32;
+function FullSensNCPWiring(n_in::Int, n_out::Int, T::DataType=Float32;
                 n_sensory=2, n_inter=3, n_command=5, n_motor=1,
                 sensory_in=-1, rec_sensory=0, sensory_inter=2, sensory_command=0, sensory_motor=0,
                 inter_in=0, rec_inter=2, inter_command=2, inter_motor=0,                       # inter_in = sensory_out
@@ -192,7 +192,7 @@ function FullSensNCPWiring(n_in::Int, n_out::Int, T::TYPE=Float32;
   Wiring(n_in,n_out,n_sensory, n_inter,n_command,n_motor,n_total,sensory_inter,inter_command,rec_command,command_motor,sens_mask,syn_mask,sens_pol,syn_pol)
 end
 
-function DiagFullNCPWiring(n_in::Int, n_out::Int, T::TYPE=Float32;
+function DiagFullNCPWiring(n_in::Int, n_out::Int, T::DataType=Float32;
                 n_sensory=2, n_inter=3, n_command=5, n_motor=1,
                 sensory_in=-1, rec_sensory=0, sensory_inter=2, sensory_command=0, sensory_motor=0,
                 inter_in=0, rec_inter=2, inter_command=2, inter_motor=0,                       # inter_in = sensory_out
@@ -226,7 +226,7 @@ function DiagFullNCPWiring(n_in::Int, n_out::Int, T::TYPE=Float32;
 end
 
 
-function NCPWiring(n_in::Int, n_out::Int, T::TYPE=Float32;
+function NCPWiring(n_in::Int, n_out::Int, T::DataType=Float32;
                 n_sensory=2, n_inter=3, n_command=5, n_motor=1,
                 sensory_in=-1, rec_sensory=0, sensory_inter=2, sensory_command=0, sensory_motor=0,
                 inter_in=0, rec_inter=2, inter_command=2, inter_motor=0,                       # inter_in = sensory_out
@@ -256,7 +256,7 @@ function create_ncp_wiring(n_sensory, n_inter, n_command, n_motor,
   sensory_inter,
   inter_command,                       # inter_in = sensory_out
   rec_command, command_motor,
-  sens_mask, sens_pol, T=Float32) #where TYPE <: AbstractFloat
+  sens_mask, sens_pol, T::DataType=Float32) #where TYPE <: AbstractFloat
 
   n_total   = n_sensory + n_inter + n_command + n_motor
 

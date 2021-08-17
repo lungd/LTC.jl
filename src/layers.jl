@@ -1,3 +1,20 @@
+const AbstractFluxLayer = Union{Flux.Recur,
+                                Flux.Conv,
+                                Flux.ConvTranspose,
+                                Flux.DepthwiseConv,
+                                Flux.CrossCor,
+                                Flux.Dropout,
+                                Flux.AlphaDropout,
+                                Flux.LayerNorm,
+                                Flux.BatchNorm,
+                                Flux.InstanceNorm,
+                                Flux.GroupNorm,
+                                Flux.Embedding,
+                                Flux.Diagonal,
+                                Flux.Bilinear,
+                                Flux.Parallel,}
+
+
 struct Mapper{V,F}
   W::V
   b::V
@@ -9,14 +26,12 @@ struct Mapper{V,F}
     new{typeof(W),typeof(σ)}(W, b, p, σ, paramlength)
   end
 end
-MapperIn(wiring::Wiring{T},σ=identity) where T = Mapper(wiring.n_in,σ,T)
-MapperOut(wiring::Wiring{T},σ=identity) where T = Mapper(wiring.n_out,σ,T)
-function Mapper(n::Int,σ=identity,T=Float32) #where TYPE# <: AbstractArray
-  init=dims->ones(T,dims...)
-  bias=dims->zeros(T,dims...)
+MapperIn(wiring::Wiring{<:AbstractFloat},σ::Function=identity) = Mapper(wiring, wiring.n_in,σ)
+MapperOut(wiring::Wiring{<:AbstractFloat},σ::Function=identity) = Mapper(wiring, wiring.n_out,σ)
+function Mapper(wiring::Wiring{T}, n::Integer,σ::Function=identity; init=dims->ones(T,dims...), bias=dims->zeros(T,dims...)) where T
   W = init(n)
   b = bias(n) #.+ T(1e-5) # scaling needs initial guess != 0
-  p = vcat(W,b)
+  p = vcat(W,b)::Vector{T}
   Mapper(W, b, p, σ, length(p))
 end
 function (m::Mapper{<:AbstractArray{T},F})(x::AbstractArray{T}, p=m.p) where {T,F}
@@ -31,7 +46,7 @@ initial_params(m::Mapper) = m.p
 paramlength(m::Mapper) = m.paramlength
 Flux.@functor Mapper (p,)
 Flux.trainable(m::Mapper) = (m.p,)
-function get_bounds(m::Mapper{<:AbstractArray{T},F}, _T=nothing) where {T,F}
+function get_bounds(m::Mapper{<:AbstractArray{T},F}, ::DataType=nothing) where {T,F}
   lb = T[]
   ub = T[]
   for _ in 1:length(m.W)
@@ -55,16 +70,16 @@ struct FluxLayerWrapper{FL,P,RE}
 
   FluxLayerWrapper(layer,p,re,paramlength) = new{typeof(layer),typeof(p),typeof(re)}(layer,p,re,paramlength)
 end
-function FluxLayerWrapper(layer)
-  p, re = Flux.destructure(layer)
+function FluxLayerWrapper(layer, T::DataType=Float32) #where T <: AbstractFloat
+  p::Vector{T}, re = LTC.destructure(layer)
   FluxLayerWrapper(layer, p, re, length(p))
 end
 (m::FluxLayerWrapper)(x, p) = m.re(p)(x)
 Base.show(io::IO, m::FluxLayerWrapper) = print(io, "FluxLayerWrapper(", m.layer, ")")
 initial_params(m::FluxLayerWrapper) = m.p
 paramlength(m::FluxLayerWrapper) = m.paramlength
-get_bounds(m::FluxLayerWrapper, T=Float32) = get_bounds(m.layer, T)
-
+get_bounds(m::FluxLayerWrapper, T::DataType=Float32) = get_bounds(m.layer, T)
+reset_state!(m::FluxLayerWrapper, p) = reset_state!(m.layer, p)
 
 
 # WIP
@@ -87,23 +102,20 @@ Flux.trainable(m::Broadcaster) = (m.model,)
 # get_bounds(m::Broadcaster; T=Float32) = get_bounds(m.model; T)
 
 
-
-
-
 # paramlength() needed for Flux layers
 paramlength(m::Flux.Dense) = length(m.weight) + length(m.bias)
 paramlength(m::Union{Flux.Chain,FastChain}) = sum([paramlength(l) for l in m.layers])
+paramlength(m::AbstractFluxLayer) = length(Flux.destructure(m)[1])
 
-
-get_bounds(l, T) = T[], T[] # For anonymous functions as layer
-function get_bounds(m::Union{Flux.Chain, FastChain}, T)
+get_bounds(l, T::DataType) = T[], T[] # For anonymous functions as layer
+function get_bounds(m::Union{Flux.Chain, FastChain}, T::DataType)
   lb = vcat([get_bounds(layer, T)[1] for layer in m.layers]...)
   ub = vcat([get_bounds(layer, T)[2] for layer in m.layers]...)
   # lb = reduce(vcat, [get_bounds(layer)[1] for layer in m.layers])
   # ub = reduce(vcat, [get_bounds(layer)[2] for layer in m.layers])
   lb, ub
 end
-function get_bounds(m::FastDense{F,<:AbstractMatrix{T}}, _T=nothing) where {F,T}
+function get_bounds(m::FastDense{F,<:AbstractMatrix{T}}, ::DataType=nothing) where {F,T}
   # T = eltype(m.initial_params())
   lb = T[]
   ub = T[]
@@ -120,7 +132,7 @@ function get_bounds(m::FastDense{F,<:AbstractMatrix{T}}, _T=nothing) where {F,T}
   lb, ub
 end
 
-function get_bounds(m::Flux.Dense{F, <:AbstractMatrix{T}, B}, _T=nothing) where {F,T,B}
+function get_bounds(m::Flux.Dense{F, <:AbstractMatrix{T}, B}, ::DataType=nothing) where {F,T,B}
   lb = T[]
   ub = T[]
   for _ in 1:length(m.weight)

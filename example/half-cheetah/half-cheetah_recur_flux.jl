@@ -7,55 +7,25 @@ using GalacticOptim
 using ModelingToolkit
 
 # Not in Project.toml
-import IterTools: ncycle
 using Plots
 gr()
 
 include("half_cheetah_data_loader.jl")
+include("../example_utils.jl")
 
-function plot_wiring(wiring::Wiring)
-  display(heatmap(wiring.sens_mask))
-  display(heatmap(wiring.sens_pol))
-  display(heatmap(wiring.syn_mask))
-  display(heatmap(wiring.syn_pol))
-end
-
-function train_cheetah(epochs, solver=VCABM(), sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)); T=Float32)
-
-  cb = function (p,l,ŷ,y;doplot=true)
-    display(l)
-    if doplot
-      y = Flux.stack(y,2)
-      ŷ = Flux.stack(ŷ,2)
-      fig = plot(y[1,:,1], label="y1")
-      plot!(fig, y[2,:,1], label="y2")
-      plot!(fig, ŷ[1,:,1], label="ŷ1")
-      plot!(fig, ŷ[2,:,1], label="ŷ2")
-      display(fig)
-    end
-    return false
-  end
-
+function train_cheetah(epochs, solver=VCABM(); T::DataType=Float32, sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)), kwargs...)
   batchsize=15
   seq_len=32
   train_dl, _, _, _ = get_dl(T, batchsize=batchsize, seq_len=seq_len)
-  train_dl = ncycle(train_dl, epochs)
 
-  wiring = LTC.FWiring(17,8)
-
+  wiring = LTC.FWiring(17,5)
   plot_wiring(wiring)
-
-  net = LTC.Net(wiring, name=:net)
-  sys = ModelingToolkit.structural_simplify(net)
-
-
-  model = Flux.Chain(LTC.MTKRecurMapped(Chain, wiring, net, sys, solver, sensealg),
-                    Flux.Dense(randn(T, 17, wiring.n_out), true),
+  model = Flux.Chain(LTC.MTKRecurMapped(Chain, wiring, solver; sensealg, kwargs...),
+                    Flux.Dense(randn(T, 17, wiring.n_out), zeros(T,17), identity),
   )
-
+  cb = LTC.MyCallback(T; cb=mycb, ecb=LTC.DEFAULT_ECB, nepochs=epochs, nsamples=length(train_dl))
   opt = Flux.Optimiser(ClipValue(1.00), ADAM(0.01))
-  AD = GalacticOptim.AutoZygote()
-  LTC.optimize(model, LTC.loss_seq, cb, opt, AD, train_dl), model
+  LTC.optimize(model, LTC.loss_seq, cb, opt, train_dl, epochs, T), model
 end
 
 

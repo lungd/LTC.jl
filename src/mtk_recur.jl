@@ -9,7 +9,9 @@ function RecurMTK(cell)
   RecurMTK(cell, p, length(p), cell.state0)
 end
 function (m::RecurMTK)(x, p=m.p)
-  m.state, y = m.cell(m.state, x, p)
+  h, y = m.cell(m.state, x, p)
+  Inf ∈ h && return h
+  m.state = h
   return y
 end
 Base.show(io::IO, m::RecurMTK) = print(io, "RecurMTK(", m.cell, ")")
@@ -17,53 +19,50 @@ initial_params(m::RecurMTK) = m.p
 paramlength(m::RecurMTK) = m.paramlength
 Flux.@functor RecurMTK (p,)
 Flux.trainable(m::RecurMTK) = (m.p,)
+get_bounds(m::RecurMTK{C,<:AbstractArray{T},S}, ::DataType=nothing) where {C,T,S} = get_bounds(m.cell, T)
 reset!(m::RecurMTK, p=m.p) = (m.state = reshape(p[end-length(m.cell.state0)+1:end],:,1))
 reset_state!(m::RecurMTK, p=m.p) = (m.state = reshape(p[end-size(m.cell.state0,1)+1:end], :, 1))
-function get_bounds(m::RecurMTK)
-  T = eltype(m.p)
-  T = Float32
-  cell_lb = T[]
-  cell_ub = T[]
+# TODO: reset_state! for cell with train_u0=false
 
-  params = collect(parameters(m.cell.sys))
-  states = collect(ModelingToolkit.states(m.cell.sys))[m.cell.in+1:end]
-  for v in vcat(params,states)
-    contains(string(v), "InPin") && continue
-    contains(string(v), "OutPin") && continue
-    hasmetadata(v, ModelingToolkit.VariableOutput) && continue
-    lower = hasmetadata(v, VariableLowerBound) ? getmetadata(v, VariableLowerBound) : -Inf
-    upper = hasmetadata(v, VariableUpperBound) ? getmetadata(v, VariableUpperBound) : Inf
-    push!(cell_lb, lower)
-    push!(cell_ub, upper)
-  end
-  return cell_lb, cell_ub
-end
 
-struct MTKCell{NET,SYS,PROB,SOLVER,SENSEALG,V,OP,S}
+struct MTKCell{B,W,NET,SYS,PROB,SOLVER,KW,V,OP,S}
   in::Int
   out::Int
+  wiring::W
   net::NET
   sys::SYS
   prob::PROB
   solver::SOLVER
-  sensealg::SENSEALG
+  kwargs::KW
   tspan::Tuple
   p::V
   paramlength::Int
   param_names::Vector{String}
   outpins::OP
-	infs::Vector
-  return_sequence::Bool
+  infs::Vector
   state0::S
+
+  function MTKCell(in, out, wiring, net, sys, prob, solver, kwargs, tspan, p, paramlength, param_names, outpins, infs, train_u0, state0)
+    cell = new{train_u0, typeof(wiring), typeof(net),typeof(sys),typeof(prob),typeof(solver),typeof(kwargs),typeof(p),typeof(outpins),typeof(state0)}(
+                       in, out, wiring, net, sys, prob, solver, kwargs, tspan, p, paramlength, param_names, outpins, infs, state0)
+    LTC.print_cell_info(cell, train_u0)
+    cell
+  end
 end
-function MTKCell(wiring::Wiring, net, sys::ModelingToolkit.AbstractSystem, solver, sensealg, T=Float32; return_sequence=true)
+
+function MTKCell(wiring::Wiring{T}, solver; train_u0=true, kwargs...) where T
+  net = LTC.Net(wiring, name=:net)
+  sys = ModelingToolkit.structural_simplify(net)::ModelingToolkit.ODESystem
+  MTKCell(wiring, net, sys, solver; train_u0, kwargs...)
+end
+function MTKCell(wiring::Wiring{T}, net::S, sys::S, solver; train_u0=true, kwargs...) where {T, S <: ModelingToolkit.AbstractSystem}
 
   in::Int = wiring.n_in
   out::Int = wiring.n_out
 
   tspan = (T(0), T(1))
   defs = ModelingToolkit.get_defaults(sys)
-	prob = ODEProblem(sys, defs, tspan) # TODO: jac, sparse ???
+  prob = ODEProblem(sys, defs, tspan) # TODO: jac, sparse ???
 
   _states = collect(states(sys))
   input_idxs = Int8[findfirst(x->contains(string(x), string(Symbol("x$(i)_InPin"))), _states) for i in 1:in]
@@ -74,46 +73,38 @@ function MTKCell(wiring::Wiring, net, sys::ModelingToolkit.AbstractSystem, solve
   u0 = prob.u0[in+1:end]
   state0 = reshape(u0, :, 1)
 
-  p = vcat(p_ode, u0)
+  p = train_u0 == true ? vcat(p_ode, u0) : p_ode
   infs = fill(T(Inf), size(state0,1))
 
-  @show param_names
-  @show prob.u0
-  @show size(state0)
-  @show prob.f.syms
-  @show length(prob.p)
-  @show length(prob.p)
-  @show input_idxs
-  @show outpins
-
-  @show typeof(p_ode)
-  @show typeof(prob.u0)
-  @show eltype(p_ode)
-  @show eltype(prob.u0)
-
-  MTKCell(in, out, net, sys, prob, solver, sensealg, tspan, p, length(p), param_names, outpins, infs, return_sequence, state0)
+  MTKCell(in, out, wiring, net, sys, prob, solver, kwargs, tspan, p, length(p), param_names, outpins, infs, train_u0, state0)
 end
 
-function (m::MTKCell)(h, xs::AbstractArray, p) where {PROB,SOLVER,SENSEALG,V}
-  # size(h) == (N,1) at the first MTKCell invocation. Need to duplicate batchsize times
-  num_reps = size(xs,2)-size(h,2)+1
+function (m::MTKCell{false,W,NET,SYS,PROB,SOLVER,KW,V,OP,<:AbstractMatrix{T}})(h, inputs::AbstractArray, p) where {W,NET,SYS,PROB,SOLVER,KW,V,OP,T}
+  # size(h) == (N,1) at the first MTKNODECell invocation. Need to duplicate batchsize times
+  num_reps = size(inputs,3)-size(h,2)+1
   hr = repeat(h, 1, num_reps)
-  p_ode_l = size(p)[1] - size(hr)[1]
-  p_ode = @view p[1:p_ode_l]
-  solve_ensemble(m,hr,xs,p_ode)
+  p_ode = p
+  solve_ensemble_full_seq(m,hr,inputs,p_ode)
+end
+
+function (m::MTKCell{true,W,NET,SYS,PROB,SOLVER,KW,V,OP,<:AbstractMatrix{T}})(h, inputs::AbstractArray, p) where {W,NET,SYS,PROB,SOLVER,KW,V,OP,T}
+  # size(h) == (N,1) at the first MTKNODECell invocation. Need to duplicate batchsize times
+  num_reps = size(inputs,3)-size(h,2)+1
+  hr = repeat(h, 1, num_reps)
+  p_ode = @view p[1:end-size(hr,1)]
+  solve_ensemble(m,hr,inputs,p_ode)
 end
 
 
-function solve_ensemble(m, u0s, xs, p_ode)
-  T = Float32
+function solve_ensemble(m::MTKCell{B,W,NET,SYS,PROB,SOLVER,KW,V,OP,<:AbstractMatrix{T}}, u0s, xs, p_ode) where {B,W,NET,SYS,PROB,SOLVER,KW,V,OP,T}
   elapsed = 1.0 # TODO
-  tspan = T.((0.0, elapsed))
+  tspan = (T(0), T(elapsed))
 
   batchsize = size(xs,2)
 	infs = m.infs
 
   function prob_func(prob,i,repeat)
-    u0 = vcat((@view xs[:,i]), (@view u0s[:,i]))
+    u0 = vcat(xs[:,i], u0s[:,i])
     p = p_ode
     remake(prob; tspan, p, u0)
   end
@@ -126,8 +117,7 @@ function solve_ensemble(m, u0s, xs, p_ode)
 
   ensemble_prob = EnsembleProblem(m.prob; prob_func, output_func, safetycopy=false) # TODO: safetycopy ???
   sol = DiffEqBase.solve(ensemble_prob, m.solver, EnsembleThreads(), trajectories=batchsize,
-                         saveat=0.5f0, reltol=1e-3, abstol=1e-3,
-                         sensealg=m.sensealg,
+                         saveat=1f0; m.kwargs...
 	)
 
 	get_quantities_of_interest(Array(sol), m)
@@ -146,9 +136,42 @@ Flux.@functor MTKCell (p,)
 Flux.trainable(m::MTKCell) = (m.p,)
 
 
+function _get_bounds(T, default_lb, default_ub, vars)
+  cell_lb = T[]
+  cell_ub = T[]
+  for v in vars
+    contains(string(v), "InPin") && continue
+    contains(string(v), "OutPin") && continue
+    hasmetadata(v, ModelingToolkit.VariableOutput) && continue
+    lower = hasmetadata(v, VariableLowerBound) ? getmetadata(v, VariableLowerBound) : default_lb
+    upper = hasmetadata(v, VariableUpperBound) ? getmetadata(v, VariableUpperBound) : default_ub
+    push!(cell_lb, lower)
+    push!(cell_ub, upper)
+  end
+  return cell_lb, cell_ub
+end
 
-function MTKRecurMapped(chainf, wiring, net, sys, solver, sensealg)
+
+function get_bounds(m::MTKCell{false,W,NET,SYS,PROB,SOLVER,KW,V,OP,<:AbstractMatrix{T}}, ::DataType=nothing; default_lb = -Inf, default_ub = Inf) where {W,NET,SYS,PROB,SOLVER,KW,V,OP,T}
+  params = collect(parameters(m.sys))
+  _get_bounds(T, default_lb, default_ub, params)
+end
+
+
+function get_bounds(m::MTKCell{true,W,NET,SYS,PROB,SOLVER,KW,V,OP,<:AbstractMatrix{T}}, ::DataType=nothing; default_lb = -Inf, default_ub = Inf) where {W,NET,SYS,PROB,SOLVER,KW,V,OP,T}
+  params = collect(parameters(m.sys))
+  states = collect(ModelingToolkit.states(m.sys))[m.in+1:end]
+  _get_bounds(T, default_lb, default_ub, vcat(params,states))
+end
+
+function MTKRecurMapped(chainf::C, wiring, solver; kwargs...) where C
   chainf(LTC.MapperIn(wiring),
-          RecurMTK(MTKCell(wiring, net, sys, solver, sensealg)),
+          RecurMTK(MTKCell(wiring, solver; kwargs...)),
+          LTC.MapperOut(wiring))
+end
+
+function MTKRecurMapped(chainf::C, wiring, net, sys, solver; kwargs...) where C
+  chainf(LTC.MapperIn(wiring),
+          RecurMTK(MTKCell(wiring, net, sys, solver; kwargs...)),
           LTC.MapperOut(wiring))
 end

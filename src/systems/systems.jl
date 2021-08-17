@@ -1,12 +1,12 @@
 @parameters t
 D = Differential(t)
 
-function InPin(T::TYPE=Float32; name) where TYPE #<: AbstractFloat
+function InPin(T::DataType=Float32; name) #where TYPE #<: AbstractFloat
   @parameters x=T(13.0)
   ODESystem(Equation[],t,Num[],[x]; name)
 end
 
-function InSPin(T::TYPE=Float32; name) where TYPE #<: AbstractFloat
+function InSPin(T::DataType=Float32; name) #where TYPE #<: AbstractFloat
   @variables x(t)=T(13.0)
   ODESystem(Equation[D(x)~0],t,[x],Num[]; name)
 end
@@ -16,12 +16,12 @@ end
 #   ODESystem(Equation[D(x)~f, f~x_in, D(x_in) ~ 0],t,[x],Num[]; name)
 # end
 
-function InPinTVP(T::TYPE=Float32; name) where TYPE# <: AbstractFloat
+function InPinTVP(T::DataType=Float32; name) #where TYPE# <: AbstractFloat
   @parameters x(t)=T(1)
   ODESystem(Equation[],t,[],Num[x]; name)
 end
 
-function OutPin(T::TYPE=Float32; name) where TYPE# <: AbstractFloat
+function OutPin(T::DataType=Float32; name) #where TYPE# <: AbstractFloat
   @variables x(t) [output=true]
   ODESystem(Equation[],t,[x],Num[]; name)
 end

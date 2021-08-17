@@ -16,8 +16,11 @@ import LinearAlgebra: Diagonal
 import DataInterpolations: ConstantInterpolation, LinearInterpolation
 using Random
 
-rand_uniform(TYPE, lb,ub,dims...) = TYPE.(rand(Uniform(lb,ub),dims...))
-rand_uniform(TYPE, lb,ub) = rand_uniform(TYPE, lb,ub,1)[1]
+import IterTools: ncycle
+
+rand_uniform(T::DataType, lb,ub,dims...) = T.(rand(Uniform(lb,ub),dims...))
+rand_uniform(T::DataType, lb,ub) = rand_uniform(T, lb,ub,1)[1]
+rand_uniform(lb,ub,dims...) = rand_uniform(Float32, lb,ub,dims...)
 
 add_dim(x::Array{T, N}) where {T,N} = reshape(x, Val(N+1))
 
@@ -30,10 +33,11 @@ include("mtk_recur.jl")
 include("mtk_node.jl")
 include("optimization.jl")
 include("losses.jl")
+include("callback.jl")
 include("variables.jl")
 
 include("data.jl")
-
+include("utils.jl")
 # include("mkt_sysstruct.jl")
 # include("zygote.jl")
 

@@ -1,6 +1,6 @@
 import NPZ: npzread
 
-function get_dl(T; seq_len=32, batchsize=16)
+function get_dl(T::DataType=Float32; seq_len=32, batchsize=16)
     filepath = joinpath(@__DIR__, "half-cheetah-data")
     data_dir = filepath
 
