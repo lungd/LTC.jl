@@ -49,14 +49,14 @@ function Neuron(T::DataType=Float32; name)
   ODESystem(eqs, t, [v, I_comps], ps; systems, name)
 end
 
-function Net(wiring::Wiring{T}; name) where T <: AbstractFloat
+function Net(wiring::Wiring{<:AbstractMatrix{T},S2}; name, p_in=false) where {T,S2}
   vars = Num[]
   ps = Num[]
   eqs = Equation[]
   systems = ODESystem[]
 
   N = wiring.n_total
-  inputs, outputs = create_pins(wiring)
+  inputs, outputs = create_pins(wiring; p_in)
   push!(systems, inputs...)
 
   n = 1

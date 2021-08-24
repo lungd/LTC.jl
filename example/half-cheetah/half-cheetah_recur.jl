@@ -13,12 +13,13 @@ gr()
 include("half_cheetah_data_loader.jl")
 include("../example_utils.jl")
 
-function train_cheetah(epochs, solver=VCABM(); T::DataType=Float32, sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)), kwargs...)
-  batchsize=15
-  seq_len=32
-  train_dl, _, _, _ = get_dl(T, batchsize=batchsize, seq_len=seq_len)
+function train_cheetah(epochs, solver=VCABM();
+  sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)),
+  T=Float32, model_size=5, batchsize=1, seq_len=32, normalise=true,
+  kwargs...)
 
-  wiring = LTC.FWiring(17,5)
+  train_dl, _, _, _ = get_2d_dl(T; batchsize, seq_len, normalise)
+  wiring = LTC.FWiring(17,model_size)
   plot_wiring(wiring)
   model = FastChain(LTC.MTKRecurMapped(FastChain, wiring, solver; sensealg, kwargs...),
                     FastDense(wiring.n_out, 17),

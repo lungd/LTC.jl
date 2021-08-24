@@ -1,6 +1,9 @@
 import NPZ: npzread
 
-function get_dl(T::DataType=Float32; seq_len=32, batchsize=16)
+get_2d_dl(T::DataType=Float32; seq_len=32, batchsize=16, normalise=true) = get_dl(T; seq_len, batchsize, normalise, stacked=false)
+get_3d_dl(T::DataType=Float32; seq_len=32, batchsize=16, normalise=true) = get_dl(T; seq_len, batchsize, normalise, stacked=true)
+
+function get_dl(T::DataType=Float32; seq_len=32, batchsize=16, stacked=true, normalise=true)
     filepath = joinpath(@__DIR__, "half-cheetah-data")
     data_dir = filepath
 
@@ -10,7 +13,7 @@ function get_dl(T::DataType=Float32; seq_len=32, batchsize=16)
     all_files = ["$(data_dir)/$(f)" for f in all_files]
     valid_files = all_files[1:5]
     test_files = all_files[6:15]
-    train_files = all_files[16:17]
+    train_files = all_files[16:end]
 
 
 
@@ -27,31 +30,38 @@ function get_dl(T::DataType=Float32; seq_len=32, batchsize=16)
     valid_x = permutedims(valid_x,(3,1,2))
     valid_y = permutedims(valid_y,(3,1,2))
     # (17x970x32)
+    if normalise
+      train_x, train_y = Flux.normalise.([train_x, train_y], dims=3)
+    end
 
-
-    train_x_new = train_y_new = Vector{Matrix{T}}[]
-    test_x_new = test_y_new = Vector{Matrix{T}}[]
-    valid_x_new = valid_y_new = Vector{Matrix{T}}[]
+    train_x_new = train_y_new = stacked ? Vector{Array{T,3}}() : []
+    test_x_new = test_y_new = stacked ? Vector{Array{T,3}}() : []
+    valid_x_new = valid_y_new = stacked ? Vector{Array{T,3}}() : []
     # train_x_new = train_y_new = []
     # test_x_new = test_y_new = []
     # valid_x_new = valid_y_new = []
     for i in 1:batchsize:size(train_x,2)-batchsize-1
-        push!(train_x_new, Flux.unstack(train_x[:,i:i+batchsize-1,:],3))
-        push!(train_y_new, Flux.unstack(train_y[:,i+1:i+batchsize,:],3))
+        tmp_x = Flux.unstack(train_x[:,i:i+batchsize-1,:],3)
+        tmp_y = Flux.unstack(train_y[:,i+1:i+batchsize,:],3)
+        tmp_x, tmp_y = stacked ? (Flux.stack(tmp_x,2),Flux.stack(tmp_y,2)) : (tmp_x,tmp_y)
+        push!(train_x_new, tmp_x)
+        push!(train_y_new, tmp_y)
         # push!(train_x_new, train_x[:,i:i+batchsize-1,:])
         # push!(train_y_new, train_y[:,i+1:i+batchsize,:])
     end
     for i in 1:batchsize:size(test_x,2)-batchsize-1
-        push!(test_x_new, Flux.unstack(test_x[:,i:i+batchsize-1,:],3))
-        push!(test_y_new, Flux.unstack(test_y[:,i+1:i+batchsize,:],3))
-        # push!(test_x_new, test_x[:,i:i+batchsize-1,:])
-        # push!(test_y_new, test_y[:,i+1:i+batchsize,:])
+        tmp_x = Flux.unstack(test_x[:,i:i+batchsize-1,:],3)
+        tmp_y = Flux.unstack(test_y[:,i+1:i+batchsize,:],3)
+        tmp_x, tmp_y = stacked ? (Flux.stack(tmp_x,2),Flux.stack(tmp_y,2)) : (tmp_x,tmp_y)
+        push!(test_x_new, tmp_x)
+        push!(test_y_new, tmp_y)
     end
     for i in 1:batchsize:size(valid_x,2)-batchsize-1
-        push!(valid_x_new, Flux.unstack(valid_x[:,i:i+batchsize-1,:],3))
-        push!(valid_y_new, Flux.unstack(valid_y[:,i+1:i+batchsize,:],3))
-        # push!(valid_x_new, valid_x[:,i:i+batchsize-1,:])
-        # push!(valid_y_new, valid_y[:,i+1:i+batchsize,:])
+        tmp_x = Flux.unstack(valid_x[:,i:i+batchsize-1,:],3)
+        tmp_y = Flux.unstack(valid_y[:,i+1:i+batchsize,:],3)
+        tmp_x, tmp_y = stacked ? (Flux.stack(tmp_x,2),Flux.stack(tmp_y,2)) : (tmp_x,tmp_y)
+        push!(valid_x_new, tmp_x)
+        push!(valid_y_new, tmp_y)
     end
 
     # train_x_new = Flux.stack(train_x_new,4)

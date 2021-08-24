@@ -8,6 +8,7 @@ using OrdinaryDiffEq
 using DiffEqSensitivity
 import DiffEqFlux: initial_params, paramlength, FastChain, FastDense, sciml_train
 using GalacticOptim
+using Zygote
 using ModelingToolkit
 using Flux
 using NNlib: sigmoid

@@ -2,7 +2,7 @@
 D = Differential(t)
 
 function InPin(T::DataType=Float32; name) #where TYPE #<: AbstractFloat
-  @parameters x=T(13.0)
+  @parameters x=T(0.0)
   ODESystem(Equation[],t,Num[],[x]; name)
 end
 
@@ -16,9 +16,13 @@ end
 #   ODESystem(Equation[D(x)~f, f~x_in, D(x_in) ~ 0],t,[x],Num[]; name)
 # end
 
-function InPinTVP(T::DataType=Float32; name) #where TYPE# <: AbstractFloat
-  @parameters x(t)=T(1)
-  ODESystem(Equation[],t,[],Num[x]; name)
+function InSPinTVP(T::DataType=Float32; name) #where TYPE# <: AbstractFloat
+  @variables begin
+    (x(t) = T(0)), [input=true]
+  end
+  @parameters f(..)=T(0)
+  # u .~ map(f->f(t), fs)
+  ODESystem([D(x) ~ f(t)]; name)
 end
 
 function OutPin(T::DataType=Float32; name) #where TYPE# <: AbstractFloat
@@ -26,8 +30,8 @@ function OutPin(T::DataType=Float32; name) #where TYPE# <: AbstractFloat
   ODESystem(Equation[],t,[x],Num[]; name)
 end
 
-function create_pins(wiring::Wiring{T}) where T #<: AbstractFloat
-  inpins = [InSPin(T; name=Symbol("x$(i)_InPin")) for i in 1:wiring.n_in]
+function create_pins(wiring::Wiring{<:AbstractMatrix{T},S2}; p_in=false) where {T,S2} #<: AbstractFloat
+  inpins = p_in == false ? [InSPin(T; name=Symbol("x$(i)_InPin")) for i in 1:wiring.n_in] : [InPin(T; name=Symbol("x$(i)_InPin")) for i in 1:wiring.n_in]
   outpins = [OutPin(T; name=Symbol("x$(i)_OutPin")) for i in 1:wiring.n_out]
   inpins, outpins
 end

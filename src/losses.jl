@@ -33,8 +33,8 @@ function loss_seq_node(p, m, x, y)
   Inf ∈ ŷ && return Inf32, ŷ, y
   NaN ∈ ŷ && return Inf32, ŷ, y
 
-  ŷ = ndims(ŷ) > 2 ? Flux.unstack(ŷ,2) : ŷ
-  y = ndims(y) > 2 ? Flux.unstack(y,2) : y
+  ŷ = ndims(ŷ) < 3 ? Flux.stack(ŷ,2) : ŷ
+  y = ndims(y) < 3 ? Flux.stack(y,2) : y
 
-  return mean(Flux.Losses.mse.(ŷ,y, agg=mean)), ŷ, y
+  return mean(Flux.Losses.mse.([ŷi for ŷi in Flux.unstack(ŷ,2)],[yi for yi in Flux.unstack(y,2)], agg=mean)), ŷ, y
 end

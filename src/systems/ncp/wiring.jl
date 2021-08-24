@@ -1,6 +1,6 @@
 abstract type WiringT <: Function end
 
-struct Wiring{T} <:WiringT
+struct Wiring{S1,S2} #<:WiringT
     n_in::Int
     n_out::Int
     n_sensory::Int
@@ -14,16 +14,21 @@ struct Wiring{T} <:WiringT
     rec_command_out::Int
     motor_in::Int
 
-    sens_mask::Matrix{T}
-    syn_mask::Matrix{T}
+    sens_mask::S1
+    syn_mask::S2
 
-    sens_pol::Matrix{T}
-    syn_pol::Matrix{T}
+    sens_pol::S1
+    syn_pol::S2
 
     function Wiring(n_in,out,n_sensory,n_inter,n_command,n_motor,n_total,sensory_out,inter_out,rec_command_out,motor_in,sens_mask,syn_mask,sens_pol,syn_pol)
-        new{eltype(sens_mask)}(
+        new{typeof(sens_mask),typeof(syn_mask)}(
                     n_in,out,n_sensory,n_inter,n_command,n_motor,n_total,sensory_out,inter_out,rec_command_out,motor_in,sens_mask,syn_mask,sens_pol,syn_pol)
     end
+end
+
+function Wiring(in::Integer, out::Integer, sens_mask, sens_pol, syn_mask, syn_pol)
+  n_total = size(syn_mask,1)
+  Wiring(in,out,-1,-1,-1,n_total,n_total,-1,-1,-1,-1,sens_mask,syn_mask,sens_pol,syn_pol)
 end
 
 random_polarity(p=[-1,1,1]) = p[rand(1:length(p))]

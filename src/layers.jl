@@ -26,12 +26,13 @@ struct Mapper{V,F}
     new{typeof(W),typeof(σ)}(W, b, p, σ, paramlength)
   end
 end
-MapperIn(wiring::Wiring{<:AbstractFloat},σ::Function=identity) = Mapper(wiring, wiring.n_in,σ)
-MapperOut(wiring::Wiring{<:AbstractFloat},σ::Function=identity) = Mapper(wiring, wiring.n_out,σ)
-function Mapper(wiring::Wiring{T}, n::Integer,σ::Function=identity; init=dims->ones(T,dims...), bias=dims->zeros(T,dims...)) where T
+MapperIn(wiring::Wiring{<:AbstractMatrix{T},S2},σ::Function=identity) where {T,S2} = Mapper(wiring, wiring.n_in,σ)
+MapperOut(wiring::Wiring{<:AbstractMatrix{T},S2},σ::Function=identity) where {T,S2} = Mapper(wiring, wiring.n_out,σ)
+Mapper(wiring::Wiring{<:AbstractMatrix{T},S2}, n::Integer,σ::Function=identity; init=dims->ones(T,dims...), bias=dims->zeros(T,dims...)) where {T,S2} = Mapper(T,n,σ;init,bias)
+function Mapper(::Type{T}, n::Integer,σ::Function=identity; init=dims->ones(T,dims...), bias=dims->zeros(T,dims...)) where {T}
   W = init(n)
   b = bias(n) #.+ T(1e-5) # scaling needs initial guess != 0
-  p = vcat(W,b)::Vector{T}
+  p = vcat(W,b)
   Mapper(W, b, p, σ, length(p))
 end
 function (m::Mapper{<:AbstractArray{T},F})(x::AbstractArray{T}, p=m.p) where {T,F}
@@ -40,7 +41,7 @@ function (m::Mapper{<:AbstractArray{T},F})(x::AbstractArray{T}, p=m.p) where {T,
   b = @view p[Wl + 1 : end]
   m.σ.(W .* x .+ b)
 end
-(m::Mapper{<:AbstractMatrix{T},F})(x::AbstractArray{T}, p=m.p) where {T,F} = reshape(m(reshape(x, size(x,1), :)), :, size(x)[2:end]...)
+(m::Mapper{<:AbstractMatrix{T},F})(x::AbstractArray{T}, p=m.p) where {T,F} = reshape(m(reshape(x, size(x,1), :),p), :, size(x)[2:end]...)
 Base.show(io::IO, m::Mapper) = print(io, "Mapper(", length(m.W), ", ", m.σ, ")")
 initial_params(m::Mapper) = m.p
 paramlength(m::Mapper) = m.paramlength
@@ -93,19 +94,19 @@ function Broadcaster(model)
   paramlength = length(p)
   Broadcaster(model,p,paramlength)
 end
-(m::Broadcaster)(xs, p) = [m.model(x, p) for x in xs] # mapfoldl(x -> m.model(x, p), vcat, xs)
+(m::Broadcaster)(xs, p=m.p) = [m.model(x, p) for x in xs] # mapfoldl(x -> m.model(x, p), vcat, xs)
 Base.show(io::IO, m::Broadcaster) = print(io, "Broadcaster(", m.model, ")")
 initial_params(m::Broadcaster) = m.p
 paramlength(m::Broadcaster) = m.paramlength
-# Flux.@functor Broadcaster #(model,)
+Flux.@functor Broadcaster (p,)
 Flux.trainable(m::Broadcaster) = (m.model,)
-# get_bounds(m::Broadcaster; T=Float32) = get_bounds(m.model; T)
+get_bounds(m::Broadcaster; T=Float32) = get_bounds(m.model; T)
 
 
 # paramlength() needed for Flux layers
-paramlength(m::Flux.Dense) = length(m.weight) + length(m.bias)
+paramlength(m::Flux.Dense) = length(m.weight) + (m.bias != Flux.Zeros() ? length(m.bias) : 0)
 paramlength(m::Union{Flux.Chain,FastChain}) = sum([paramlength(l) for l in m.layers])
-paramlength(m::AbstractFluxLayer) = length(Flux.destructure(m)[1])
+paramlength(m::AbstractFluxLayer) = length(LTC.destructure(m)[1])
 
 get_bounds(l, T::DataType) = T[], T[] # For anonymous functions as layer
 function get_bounds(m::Union{Flux.Chain, FastChain}, T::DataType)
@@ -139,9 +140,11 @@ function get_bounds(m::Flux.Dense{F, <:AbstractMatrix{T}, B}, ::DataType=nothing
     push!(lb, -10.1)
     push!(ub, 10.1)
   end
-  for _ in 1:length(m.bias)
-    push!(lb, -10.1)
-    push!(ub, 10.1)
+  if m.bias != Flux.Zeros()
+    for _ in 1:length(m.bias)
+      push!(lb, -10.1)
+      push!(ub, 10.1)
+    end
   end
   lb, ub
 end

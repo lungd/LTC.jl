@@ -13,15 +13,16 @@ gr()
 include("half_cheetah_data_loader.jl")
 include("../example_utils.jl")
 
-function train_cheetah(epochs, solver=VCABM(); T::DataType=Float32, sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)), kwargs...)
-  batchsize=15
-  seq_len=32
-  train_dl, _, _, _ = get_dl(T, batchsize=batchsize, seq_len=seq_len)
+function train_cheetah(epochs, solver=VCABM();
+  sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)),
+  T=Float32, model_size=5, batchsize=1, seq_len=32, normalise=true,
+  kwargs...)
 
-  wiring = LTC.FWiring(17,5)
+  train_dl, _, _, _ = get_2d_dl(T; batchsize, seq_len, normalise)
+  wiring = LTC.FWiring(17,model_size)
   plot_wiring(wiring)
-  model = Flux.Chain(LTC.MTKRecurMapped(Chain, wiring, solver; sensealg, kwargs...),
-                    Flux.Dense(randn(T, 17, wiring.n_out), zeros(T,17), identity),
+  model = Flux.Chain(LTC.MTKRecurMapped(Flux.Chain, wiring, solver; sensealg, kwargs...),
+                    Flux.Dense(randn(T, 17, wiring.n_out), false, identity),
   )
   cb = LTC.MyCallback(T; cb=mycb, ecb=LTC.DEFAULT_ECB, nepochs=epochs, nsamples=length(train_dl))
   opt = Flux.Optimiser(ClipValue(1.00), ADAM(0.01))
@@ -30,4 +31,5 @@ end
 
 
 @time train_cheetah(1)
-@time train_cheetah(100)
+@time train_cheetah(2, AutoTsit5(Rosenbrock23(autodiff=false)); model_size=8, batchsize=1, abstol=1e-4, reltol=1e-4
+)

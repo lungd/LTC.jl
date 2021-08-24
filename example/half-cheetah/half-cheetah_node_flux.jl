@@ -13,25 +13,27 @@ gr()
 include("half_cheetah_data_loader.jl")
 include("../example_utils.jl")
 
-function train_cheetah_node(epochs, solver=VCABM(); T::DataType=Float32, sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)), kwargs...)
-  batchsize=15
-  seq_len=32
-  train_dl, _, _, _ = get_dl(T, batchsize=batchsize, seq_len=seq_len)
+function train_cheetah_node(epochs, solver=VCABM();
+  sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)),
+  T=Float32, model_size=5, batchsize=1, seq_len=32, normalise=true,
+  kwargs...)
 
-  wiring = LTC.FWiring(17,8, T)
+  train_dl, _, _, _ = get_3d_dl(T; batchsize, seq_len, normalise)
+  wiring = LTC.FWiring(17,model_size, T)
   plot_wiring(wiring)
-  model = Flux.Chain(x -> Flux.stack(x,2),
-                     LTC.MTKNODEMapped(Flux.Chain, wiring, solver; sensealg, kwargs...),
-                     Flux.Dense(rand(T, 17, wiring.n_out), zeros(T,17), identity),
-                     x -> Flux.unstack(x,2),
+  net = LTC.Net(wiring, name=:net)
+  sys = ModelingToolkit.structural_simplify(net)::ModelingToolkit.ODESystem
+  model = Flux.Chain(LTC.MTKNODEMapped(Flux.Chain, wiring, net, sys, solver; sensealg, kwargs...),
+                     Flux.Dense(rand(T, 17, wiring.n_out), false, identity),
   )
   cb = LTC.MyCallback(T; cb=mycb, ecb=LTC.DEFAULT_ECB, nepochs=epochs, nsamples=length(train_dl))
-  opt = Flux.Optimiser(ClipValue(0.80), ADAM(0.02))
+  # opt = Flux.Optimiser(ClipValue(0.80), ADAM(0.005))
+  opt = LTC.ClampBoundOptim(LTC.get_bounds(model,T)..., ClipValue(T(0.8)), ADAM(T(0.01)))
   LTC.optimize(model, LTC.loss_seq_node, cb, opt, train_dl, epochs, T), model
 end
 
 
-train_cheetah_node(1)
-train_cheetah_node(100)
-train_cheetah_node(100, Tsit5(); abstol=1e-3, reltol=1e-3)
-train_cheetah_node(100, Tsit5(); abstol=1e-3, reltol=1e-3, dtmin=1e-8)
+train_cheetah_node(1, AutoVern7(Rodas5(autodiff=false)); batchsize=2, model_size=8, abstol=1e-4, reltol=1e-4
+)
+train_cheetah_node(3, AutoTsit5(Rosenbrock23()); batchsize=2, model_size=8, abstol=1e-4, reltol=1e-4
+)

@@ -1,3 +1,20 @@
+# mutable struct Trainer
+#   model::M
+#   optimizer::OPT
+#   AD::AD
+#   train_dl::TRAIN
+#   test_dl::TEST
+#   valid_dl::VALID
+#   loss_f::LF
+#   losses::L
+#   cb::CB
+#   ecb::ECB
+#   nepochs::Int
+#   nsamples::Int
+#   iter::Int
+#   epoch::Int
+# end
+
 mutable struct ClampBoundOptim{V} <: Flux.Optimise.AbstractOptimiser
   os::Vector{Any}
   lb::V
