@@ -6,13 +6,13 @@ using LTC: rand_uniform
 
 @register NNlib.sigmoid(t)
 
-function SigmoidSynapse(;name)
+function SigmoidSynapse(T::DataType=Float32; name, E=rand_uniform(T, -0.8, 0.8))
   vars = @variables I(t), v_pre(t), v_post(t)
   ps = @parameters begin
-    μ = rand_uniform(Float32, 0.3, 0.8), [lower=0.1f0, upper=1.0f0]
-    σ = rand_uniform(Float32, 3, 8), [lower=1f0, upper=10f0]
-    G = rand_uniform(Float32, 0.001, 1), [lower=0.000001f0, upper=1.1f0]
-    E = rand_uniform(Float32, -0.3, 0.3), [lower=-1.1f0, upper=1.1f0]
+    μ = rand_uniform(T, 0.1, 0.8), [lower = T(0.01), upper = T(1.0)]
+    σ = rand_uniform(T, 3, 8), [lower = T(1.0), upper = 10.0]
+    G = rand_uniform(T, 0.001, 1), [lower = T(0), upper = T(2.1)]
+    E = E, [lower = T(-1.1), upper = T(1.1)]
   end
   eqs = [
     I ~ G * NNlib.sigmoid((v_pre - μ) * σ) * (v_post - E)
@@ -20,11 +20,11 @@ function SigmoidSynapse(;name)
   ODESystem(eqs, t, vars, ps; name)
 end
 
-function LeakChannel(;name)
+function LeakChannel(T::DataType=Float32; name)
   vars = @variables I(t), v(t)
   ps = @parameters begin
-    G = rand_uniform(Float32, 0.001, 1), [lower = 0.000001f0, upper = 1.1f0]
-    E = rand_uniform(Float32, -0.3, 0.3), [lower = -1.1f0, upper = 1.1f0]
+    G = rand_uniform(T, 0.001, 1), [lower = T(0), upper = T(2.1)]
+    E = rand_uniform(T, -0.3, 0.3), [lower = T(-1.1), upper = T(1.1)]
   end
   eqs = [
     I ~ G * (v - E)
@@ -32,15 +32,15 @@ function LeakChannel(;name)
   ODESystem(eqs, t, vars, ps; name)
 end
 
-function Neuron(; name)
+function Neuron(T::DataType=Float32; name)
   @variables begin
-    (v(t) = rand_uniform(Float32, 0.001, 0.2)), [lower=-2f0, upper=2f0]
+    (v(t) = rand_uniform(T, 0.001, 0.2)), [lower = T(0), upper = T(2.0)]
     (I_comps(t))
   end
   ps = @parameters begin
-    Cm = rand_uniform(Float32, 1, 3), [lower = 0.8f0, upper = 4f0]
+    Cm = rand_uniform(T, 1, 3), [lower = T(0.8), upper = T(8.0)]
   end
-  @named leak = LeakChannel()
+  @named leak = LeakChannel(T)
   eqs = [
     D(v) ~ -Cm * (leak.I + I_comps)
     leak.v ~ v
@@ -49,32 +49,32 @@ function Neuron(; name)
   ODESystem(eqs, t, [v, I_comps], ps; systems, name)
 end
 
-function Net(wiring; name)
+function Net(wiring::Wiring{<:AbstractMatrix{T},S2}; name, p_in=false) where {T,S2}
   vars = Num[]
   ps = Num[]
   eqs = Equation[]
   systems = ODESystem[]
 
   N = wiring.n_total
-  inputs, outputs = create_pins(wiring.n_in, wiring.n_out)
+  inputs, outputs = create_pins(wiring; p_in)
   push!(systems, inputs...)
 
   n = 1
   neurons = ODESystem[]
   for i in 1:wiring.n_sensory
-    push!(neurons, Neuron(;name=Symbol("n$(n)_SensoryNeuron")))
+    push!(neurons, Neuron(T; name=Symbol("n$(n)_SensoryNeuron")))
     n += 1
   end
   for i in 1:wiring.n_inter
-    push!(neurons, Neuron(;name=Symbol("n$(n)_InterNeuron")))
+    push!(neurons, Neuron(T; name=Symbol("n$(n)_InterNeuron")))
     n += 1
   end
   for i in 1:wiring.n_command
-    push!(neurons, Neuron(;name=Symbol("n$(n)_CommandNeuron")))
+    push!(neurons, Neuron(T; name=Symbol("n$(n)_CommandNeuron")))
     n += 1
   end
   for i in 1:wiring.n_motor
-    push!(neurons, Neuron(;name=Symbol("n$(n)_MotorNeuron")))
+    push!(neurons, Neuron(T; name=Symbol("n$(n)_MotorNeuron")))
     n += 1
   end
   push!(systems, neurons...)
@@ -84,7 +84,7 @@ function Net(wiring; name)
     I_comps_dst = 0
     for src in 1:length(wiring.sens_mask[:,dst])
       wiring.sens_mask[src,dst] == 0 && continue
-      syn = SigmoidSynapse(;name=Symbol("s$(n)_x$(src)-->n$(dst)_SigmoidSynapse"))
+      syn = SigmoidSynapse(T; name=Symbol("s$(n)_x$(src)-->n$(dst)_SigmoidSynapse"),E=wiring.sens_pol[src,dst])
       n += 1
       push!(eqs, syn.v_pre ~ inputs[src].x)
       push!(eqs, syn.v_post ~ neurons[dst].v)
@@ -93,7 +93,7 @@ function Net(wiring; name)
     end
     for src in 1:length(wiring.syn_mask[:,dst])
       wiring.syn_mask[src,dst] == 0 && continue
-      syn = SigmoidSynapse(;name=Symbol("s$(n)_n$(src)-->n$(dst)_SigmoidSynapse"))
+      syn = SigmoidSynapse(T; name=Symbol("s$(n)_n$(src)-->n$(dst)_SigmoidSynapse"),E=wiring.syn_pol[src,dst])
       n += 1
       push!(eqs, syn.v_pre ~ neurons[src].v)
       push!(eqs, syn.v_post ~ neurons[dst].v)

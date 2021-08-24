@@ -6,31 +6,50 @@ using Distributions
 using DiffEqBase
 using OrdinaryDiffEq
 using DiffEqSensitivity
+using DifferentialEquations
 import DiffEqFlux: initial_params, paramlength, FastChain, FastDense, sciml_train
 using GalacticOptim
+using Zygote
 using ModelingToolkit
 using Flux
 using NNlib: sigmoid
+using ForwardDiff
+import LinearAlgebra: Diagonal
+import DataInterpolations: ConstantInterpolation, LinearInterpolation
+using Random
 
-rand_uniform(TYPE, lb,ub,dims...) = TYPE.(rand(Uniform(lb,ub),dims...))
-rand_uniform(TYPE, lb,ub) = rand_uniform(TYPE, lb,ub,1)[1]
+import IterTools: ncycle
 
-#Zygote.@nograd rand_uniform, reshape
+rand_uniform(T::DataType, lb,ub,dims...) = T.(rand(Uniform(lb,ub),dims...))
+rand_uniform(T::DataType, lb,ub) = rand_uniform(T, lb,ub,1)[1]
+rand_uniform(lb,ub,dims...) = rand_uniform(Float32, lb,ub,dims...)
+rand_uniform(lb,ub) = rand_uniform(Float32, lb,ub, 1)[1]
+
+add_dim(x::Array{T, N}) where {T,N} = reshape(x, Val(N+1))
+
+
+
+include("systems/ncp/wiring.jl")
 
 include("layers.jl")
 include("mtk_recur.jl")
+include("mtk_node.jl")
 include("optimization.jl")
 include("losses.jl")
+include("callback.jl")
 include("variables.jl")
+
+include("data.jl")
+include("utils.jl")
 # include("mkt_sysstruct.jl")
 # include("zygote.jl")
 
 include("systems/systems.jl")
 include("systems/ncp/ncp_sys_gen.jl")
-include("systems/ncp/wiring.jl")
 
 
-export MTKRecur, MTKCell, Mapper, Broadcaster, get_bounds
+
+export get_bounds
 export initial_params, paramlength
 export reset_state!
 export optimize
