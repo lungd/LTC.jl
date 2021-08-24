@@ -67,8 +67,8 @@ function MTKNODECell(wiring::Wiring{<:AbstractMatrix{T},S2}, net::S, sys::S, sol
   # tgrad =eval(ModelingToolkit.generate_tgrad(sys)[2])
   prob_f = ODEFunction(sys, states(sys), parameters(sys), tgrad=true)
 
-  @show prob.f.syms
-  @show parameters(sys)
+  # @show prob.f.syms
+  # @show parameters(sys)
 
   _states = collect(states(sys))
   input_idxs = Int8[findfirst(x->contains(string(x), string(Symbol("x$(i)_InPin"))), _states) for i in 1:in]
@@ -168,7 +168,10 @@ function solve_ensemble_full_seq(m::MTKNODECell{B,W,NET,SYS,PROB,PROBF,SOLVER,KW
     saveat=1f0, save_everystep=false, save_end=true, save_start=true; m.kwargs...)
 
   ensemble_prob = EnsembleProblem(_prob; prob_func, output_func, safetycopy=false) # TODO: safetycopy ???
-  sol = solve(ensemble_prob, m.solver, EnsembleThreads(); trajectories=batchsize,
+  sol = m.solver !== nothing ? solve(ensemble_prob, m.solver, EnsembleThreads(); trajectories=batchsize,
+              saveat=1f0, save_everystep=false, save_start=true, save_end=true,
+              m.kwargs...,
+	) : solve(ensemble_prob, EnsembleThreads(); trajectories=batchsize,
               saveat=1f0, save_everystep=false, save_start=true, save_end=true,
               m.kwargs...,
 	)
@@ -220,13 +223,15 @@ function get_bounds(m::MTKNODECell{B,W,NET,SYS,PROB,PROBF,SOLVER,KW,V,OP,<:Abstr
   _get_bounds(T, default_lb, default_ub, vcat(params,states))
 end
 
-function MTKNODEMapped(chainf::C, wiring, solver; kwargs...) where C
+function MTKNODEMapped(chainf::C, wiring, solver; sensealg=nothing, kwargs...) where C
+  rec = sensealg !== nothing ? MTKNODE(MTKNODECell(wiring, solver; sensealg, kwargs...)) : MTKNODE(MTKNODECell(wiring, solver; kwargs...))
   chainf(LTC.MapperIn(wiring),
-          MTKNODE(MTKNODECell(wiring, solver; kwargs...)),
+          rec,
           LTC.MapperOut(wiring))
 end
 function MTKNODEMapped(chainf::C, wiring, net, sys, solver; kwargs...) where C
+  rec = sensealg !== nothing ? MTKNODE(MTKNODECell(wiring, net, sys, solver; sensealg, kwargs...)) : MTKNODE(MTKNODECell(wiring, net, sys, solver; kwargs...))
   chainf(LTC.MapperIn(wiring),
-          MTKNODE(MTKNODECell(wiring, net, sys, solver; kwargs...)),
+          rec,
           LTC.MapperOut(wiring))
 end

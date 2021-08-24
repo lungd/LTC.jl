@@ -6,6 +6,7 @@ using Distributions
 using DiffEqBase
 using OrdinaryDiffEq
 using DiffEqSensitivity
+using DifferentialEquations
 import DiffEqFlux: initial_params, paramlength, FastChain, FastDense, sciml_train
 using GalacticOptim
 using Zygote
@@ -22,6 +23,7 @@ import IterTools: ncycle
 rand_uniform(T::DataType, lb,ub,dims...) = T.(rand(Uniform(lb,ub),dims...))
 rand_uniform(T::DataType, lb,ub) = rand_uniform(T, lb,ub,1)[1]
 rand_uniform(lb,ub,dims...) = rand_uniform(Float32, lb,ub,dims...)
+rand_uniform(lb,ub) = rand_uniform(Float32, lb,ub, 1)[1]
 
 add_dim(x::Array{T, N}) where {T,N} = reshape(x, Val(N+1))
 

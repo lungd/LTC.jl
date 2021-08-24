@@ -14,7 +14,7 @@ include("half_cheetah_data_loader.jl")
 include("../example_utils.jl")
 
 function train_cheetah(epochs; T=Float32, model_size=5, batchsize=15, seq_len=32)
-  train_dl, _, _, _ = get_dl(T; batchsize, seq_len)
+  train_dl, _, _, _ = get_2d_dl(T; batchsize, seq_len)
   model = Flux.Chain(LTC.Mapper(T, 17),
                      Flux.LSTM(17, model_size),
                      LTC.Mapper(T, model_size),

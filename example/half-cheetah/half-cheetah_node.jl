@@ -14,8 +14,7 @@ include("half_cheetah_data_loader.jl")
 include("../example_utils.jl")
 
 
-function train_cheetah_node(epochs, solver=VCABM();
-  sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true)),
+function train_cheetah_node(epochs, solver=nothing; sensealg=nothing,
   T=Float32, model_size=5, batchsize=1, seq_len=32, normalise=true,
   kwargs...)
 
@@ -30,6 +29,7 @@ function train_cheetah_node(epochs, solver=VCABM();
   # opt = Flux.Optimiser(ClipValue(0.80), ADAM(0.02))
   opt = LTC.ClampBoundOptim(LTC.get_bounds(model,T)..., ClipValue(T(1.0)), ADAM(T(0.02)))
   LTC.optimize(model, LTC.loss_seq_node, cb, opt, train_dl, epochs, T), model
+
 end
 
 train_cheetah_node(1)

@@ -47,7 +47,7 @@ struct MTKCell{B,W,NET,SYS,PROB,PROBF,SOLVER,KW,V,OP,S}
   end
 end
 
-function MTKCell(wiring::Wiring{<:AbstractMatrix{T},S2}, solver; train_u0=true, kwargs...) where {T,S2}
+function MTKCell(wiring::Wiring{<:AbstractMatrix{T},S2}, solver=nothing; train_u0=true, kwargs...) where {T,S2}
   net = LTC.Net(wiring, name=:net)
   sys = ModelingToolkit.structural_simplify(net)::ModelingToolkit.ODESystem
   MTKCell(wiring, net, sys, solver; train_u0, kwargs...)
@@ -107,7 +107,9 @@ function solve_ensemble(m::MTKCell{B,W,NET,SYS,PROB,PROBF,SOLVER,KW,V,OP,<:Abstr
   end
 
   ensemble_prob = EnsembleProblem(m.prob; prob_func, output_func, safetycopy=false) # TODO: safetycopy ???
-  sol = DiffEqBase.solve(ensemble_prob, m.solver, EnsembleThreads(), trajectories=batchsize,
+  sol = m.solver !== nothing ? DiffEqBase.solve(ensemble_prob, m.solver, EnsembleThreads(), trajectories=batchsize,
+                         saveat=1f0; save_everystep=false, save_start=false, m.kwargs...
+	) : DiffEqBase.solve(ensemble_prob, EnsembleThreads(), trajectories=batchsize,
                          saveat=1f0; save_everystep=false, save_start=false, m.kwargs...
 	)
 
@@ -148,14 +150,16 @@ function get_bounds(m::MTKCell, T::DataType=nothing; default_lb = -Inf, default_
   _get_bounds(T, default_lb, default_ub, vcat(params,states))
 end
 
-function MTKRecurMapped(chainf::C, wiring, solver; kwargs...) where C
+function MTKRecurMapped(chainf::C, wiring, solver=nothing; sensealg=nothing, kwargs...) where C
+  rec = sensealg !== nothing ? RecurMTK(MTKCell(wiring, solver; sensealg, kwargs...)) : RecurMTK(MTKCell(wiring, solver; kwargs...))
   chainf(LTC.MapperIn(wiring),
-          RecurMTK(MTKCell(wiring, solver; kwargs...)),
+          rec,
           LTC.MapperOut(wiring))
 end
 
-function MTKRecurMapped(chainf::C, wiring, net, sys, solver; kwargs...) where C
+function MTKRecurMapped(chainf::C, wiring, net, sys, solver=nothing; sensealg=nothing, kwargs...) where C
+  rec = sensealg !== nothing ? RecurMTK(MTKCell(wiring, net, sys, solver; sensealg, kwargs...)) : RecurMTK(MTKCell(wiring, net, sys, solver; kwargs...))
   chainf(LTC.MapperIn(wiring),
-          RecurMTK(MTKCell(wiring, net, sys, solver; kwargs...)),
+          rec,
           LTC.MapperOut(wiring))
 end
